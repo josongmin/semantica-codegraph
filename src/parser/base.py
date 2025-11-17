@@ -3,12 +3,13 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from tree_sitter import Language, Parser, Node
 
 from ..core.models import RawRelation, RawSymbol, RepoId, Span
 from ..core.ports import ParserPort
+from .cache import ParseCache
 
 logger = logging.getLogger(__name__)
 
@@ -25,17 +26,26 @@ class BaseTreeSitterParser(ParserPort, ABC):
     언어별 파서는 이 클래스를 상속받아 구현합니다.
     """
 
-    def __init__(self, language: Language):
+    def __init__(
+        self,
+        language: Language,
+        use_cache: bool = True,
+        cache_root: Optional[Path] = None
+    ):
         """
         Args:
             language: Tree-sitter Language 객체
+            use_cache: True면 파싱 결과를 JSON 파일로 캐시
+            cache_root: 캐시 루트 디렉토리 (None이면 .semantica-cache 사용)
         """
         # tree-sitter 0.25+ API
         self.parser = Parser(language)
+        self.use_cache = use_cache
+        self.cache = ParseCache(cache_root) if use_cache else None
 
     def parse_file(self, file_meta: dict) -> Tuple[List[RawSymbol], List[RawRelation]]:
         """
-        파일 파싱
+        파일 파싱 (캐시 지원)
         
         Args:
             file_meta: 파일 메타데이터
@@ -52,6 +62,20 @@ class BaseTreeSitterParser(ParserPort, ABC):
         if not abs_path.exists():
             logger.warning(f"File not found: {abs_path}")
             return [], []
+        
+        # 캐시 확인
+        if self.cache:
+            cached_result = self.cache.get(
+                repo_id=file_meta["repo_id"],
+                file_path=abs_path
+            )
+            if cached_result:
+                symbols, relations = cached_result
+                logger.debug(
+                    f"Loaded from cache {file_meta['path']}: "
+                    f"{len(symbols)} symbols, {len(relations)} relations"
+                )
+                return symbols, relations
         
         try:
             # 파일 읽기
@@ -79,6 +103,15 @@ class BaseTreeSitterParser(ParserPort, ABC):
                 file_meta,
                 symbols
             )
+            
+            # 캐시 저장
+            if self.cache:
+                self.cache.save(
+                    repo_id=file_meta["repo_id"],
+                    file_path=abs_path,
+                    symbols=symbols,
+                    relations=relations
+                )
             
             logger.debug(
                 f"Parsed {file_meta['path']}: "

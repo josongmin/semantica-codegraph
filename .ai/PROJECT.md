@@ -49,4 +49,9 @@ src/
 - 포트 분리 원칙:
   - `core/ports.py`: 인프라 레이어 포트 (RepoScanner, Parser, GraphStore, ChunkStore, EmbeddingStore)
   - `search/ports/`: 검색 도메인 포트 (LexicalSearch, SemanticSearch, GraphSearch, Ranker)
+- 오픈소스 활용 원칙:
+  - 자주 사용되는 기능이나 검증된 로직이 오픈소스로 존재하면 최대한 활용
+  - 직접 구현하기 전에 관련 오픈소스 라이브러리/프로젝트를 먼저 검토
+  - 오픈소스를 활용할 때는 프로젝트 아키텍처(포트/어댑터 패턴)에 맞게 래핑하여 사용
+  - 예: 파싱 캐시, 증분 인덱싱, 파일 해시 계산 등은 검증된 오픈소스 활용 우선
 

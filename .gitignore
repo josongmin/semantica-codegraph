@@ -52,6 +52,9 @@ dmypy.json
 .temp/
 *.log
 
+# Parse cache
+.semantica-cache/
+
 # OS
 .DS_Store
 Thumbs.db

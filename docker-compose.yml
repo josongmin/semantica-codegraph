@@ -43,13 +43,14 @@ services:
   zoekt:
     image: sourcegraph/zoekt-webserver:latest
     container_name: semantica-zoekt
+    platform: linux/amd64
     env_file:
       - .env
     ports:
       - "${ZOEKT_PORT:-6070}:6070"
     volumes:
       - zoekt_data:/data
-    command: ["-index", "/data/index", "-listen", ":6070"]
+    command: ["zoekt-webserver", "-index", "/data/index", "-listen", ":6070"]
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--spider", "http://localhost:6070/"]
       interval: 10s

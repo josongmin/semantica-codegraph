@@ -29,8 +29,6 @@ class Admin(User):
     async def check_permission(self, permission: str) -> bool:
         """Check if admin has permission"""
         return permission in self.permissions
-
-
 def calculate_total(items: List[dict]) -> float:
     """Calculate total price from items"""
     total = 0.0

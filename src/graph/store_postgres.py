@@ -41,10 +41,28 @@ class PostgresGraphStore(GraphStorePort):
         return psycopg2.connect(self.connection_string)
 
     def _ensure_tables(self):
-        """테이블 생성 (없으면)"""
+        """
+        테이블 생성 (없으면)
+        
+        Note: 전체 스키마는 migrations/001_init_schema.sql 참조
+              여기서는 최소한만 생성
+        """
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                # code_nodes 테이블
+                # 스키마 파일 실행하는 게 더 나음
+                # 여기서는 기본 테이블만 생성
+                
+                # repo_metadata (최소)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS repo_metadata (
+                        repo_id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        root_path TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT NOW()
+                    )
+                """)
+                
+                # code_nodes
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS code_nodes (
                         repo_id TEXT NOT NULL,
@@ -59,11 +77,12 @@ class PostgresGraphStore(GraphStorePort):
                         name TEXT NOT NULL,
                         text TEXT NOT NULL,
                         attrs JSONB,
+                        created_at TIMESTAMP DEFAULT NOW(),
                         PRIMARY KEY (repo_id, id)
                     )
                 """)
 
-                # code_edges 테이블
+                # code_edges
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS code_edges (
                         repo_id TEXT NOT NULL,
@@ -71,11 +90,12 @@ class PostgresGraphStore(GraphStorePort):
                         dst_id TEXT NOT NULL,
                         type TEXT NOT NULL,
                         attrs JSONB,
+                        created_at TIMESTAMP DEFAULT NOW(),
                         PRIMARY KEY (repo_id, src_id, dst_id, type)
                     )
                 """)
 
-                # 인덱스 생성
+                # 인덱스
                 cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_nodes_file_path 
                     ON code_nodes(repo_id, file_path)

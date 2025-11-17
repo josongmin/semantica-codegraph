@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from .base import BaseTreeSitterParser
+from .cache import ParseCache
 from .hybrid_parser import HybridParser
 from .python_parser import PythonTreeSitterParser
 from .scip_parser import ScipParser
@@ -103,6 +104,7 @@ def create_scip_parser(scip_index_path: Optional[Path] = None) -> ScipParser:
 
 __all__ = [
     "BaseTreeSitterParser",
+    "ParseCache",
     "PythonTreeSitterParser",
     "TypeScriptTreeSitterParser",
     "ScipParser",
