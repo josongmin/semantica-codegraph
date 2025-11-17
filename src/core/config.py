@@ -27,9 +27,10 @@ class Config:
     lexical_search_backend: LexicalSearchBackend = LexicalSearchBackend.MEILISEARCH
 
     # 임베딩 모델 설정
-    embedding_model: EmbeddingModel = EmbeddingModel.ALL_MINI_LM_L6_V2
-    embedding_api_key: Optional[str] = None  # OpenAI, Cohere 등 API 키
+    embedding_model: EmbeddingModel = EmbeddingModel.CODESTRAL_EMBED
+    embedding_api_key: Optional[str] = None  # Mistral, OpenAI, Cohere API 키
     embedding_dimension: Optional[int] = None  # 모델별 벡터 차원 (None이면 모델 기본값)
+    mistral_api_base: str = "https://api.mistral.ai/v1"  # Mistral API 베이스 URL
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -50,11 +51,12 @@ class Config:
                 os.getenv("LEXICAL_SEARCH_BACKEND", LexicalSearchBackend.MEILISEARCH.value)
             ),
             embedding_model=EmbeddingModel(
-                os.getenv("EMBEDDING_MODEL", EmbeddingModel.ALL_MINI_LM_L6_V2.value)
+                os.getenv("EMBEDDING_MODEL", EmbeddingModel.CODESTRAL_EMBED.value)
             ),
             embedding_api_key=os.getenv("EMBEDDING_API_KEY"),
             embedding_dimension=(
                 int(os.getenv("EMBEDDING_DIMENSION")) if os.getenv("EMBEDDING_DIMENSION") else None
             ),
+            mistral_api_base=os.getenv("MISTRAL_API_BASE", "https://api.mistral.ai/v1"),
         )
 

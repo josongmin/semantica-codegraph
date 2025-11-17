@@ -13,6 +13,9 @@ class LexicalSearchBackend(str, Enum):
 class EmbeddingModel(str, Enum):
     """임베딩 모델 선택"""
 
+    # Mistral (코드 특화 최고)
+    CODESTRAL_EMBED = "codestral-embed"
+
     # OpenAI 모델
     OPENAI_ADA_002 = "text-embedding-ada-002"
     OPENAI_3_SMALL = "text-embedding-3-small"

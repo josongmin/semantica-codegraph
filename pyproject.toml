@@ -17,7 +17,7 @@ dependencies = [
     "tree-sitter-javascript>=0.21.0",
     "tree-sitter-typescript>=0.21.0",
     "protobuf>=4.21.0",  # SCIP uses protobuf
-    "alembic>=1.13.0",
+    "mistralai>=1.0.0",  # Mistral Codestral Embed
 ]
 
 [project.optional-dependencies]
@@ -26,6 +26,13 @@ dev = [
     "black",
     "ruff",
     "mypy",
+]
+
+embedding = [
+    "openai>=1.0.0",
+    "sentence-transformers>=2.2.0",
+    "transformers>=4.30.0",
+    "torch>=2.0.0",
 ]
 
 [tool.setuptools.packages.find]

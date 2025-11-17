@@ -15,7 +15,7 @@ def test_config_defaults():
     assert config.postgres_port == 5432
     assert config.postgres_db == "semantica_codegraph"
     assert config.lexical_search_backend == LexicalSearchBackend.MEILISEARCH
-    assert config.embedding_model == EmbeddingModel.ALL_MINI_LM_L6_V2
+    assert config.embedding_model == EmbeddingModel.CODESTRAL_EMBED
 
 
 def test_config_from_env(monkeypatch):
@@ -53,7 +53,8 @@ def test_config_embedding():
     """임베딩 설정 테스트"""
     config = Config()
     
-    assert config.embedding_model == EmbeddingModel.ALL_MINI_LM_L6_V2
+    assert config.embedding_model == EmbeddingModel.CODESTRAL_EMBED
     assert config.embedding_api_key is None
     assert config.embedding_dimension is None  # 모델 기본값 사용
+    assert config.mistral_api_base == "https://api.mistral.ai/v1"
 
