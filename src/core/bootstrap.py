@@ -31,6 +31,7 @@ class Bootstrap:
         self._pipeline = None
         self._semantic_search = None
         self._graph_search = None
+        self._fuzzy_search = None
         self._hybrid_retriever = None
         self._ranker = None
         self._context_packer = None
@@ -58,7 +59,11 @@ class Bootstrap:
         """코드 그래프 스토어"""
         if self._graph_store is None:
             from ..graph.store_postgres import PostgresGraphStore
-            self._graph_store = PostgresGraphStore(self._connection_string)
+            self._graph_store = PostgresGraphStore(
+                connection_string=self._connection_string,
+                pool_size=self.config.db_connection_pool_size,
+                pool_max=self.config.db_connection_pool_max
+            )
         return self._graph_store
     
     @property
@@ -90,7 +95,9 @@ class Bootstrap:
             self._embedding_store = PgVectorStore(
                 connection_string=self._connection_string,
                 embedding_dimension=self.embedding_service.get_dimension(),
-                model_name=self.config.embedding_model.value
+                model_name=self.config.embedding_model.value,
+                pool_size=self.config.db_connection_pool_size,
+                pool_max=self.config.db_connection_pool_max
             )
         return self._embedding_store
     
@@ -158,6 +165,8 @@ class Bootstrap:
                 chunker=self.chunker,
                 scanner=self.scanner
             )
+            # Config 전달 (병렬 처리 옵션용)
+            self._pipeline.config = self.config
         return self._pipeline
     
     @property
@@ -182,6 +191,17 @@ class Bootstrap:
         return self._graph_search
     
     @property
+    def fuzzy_search(self):
+        """퍼지 검색"""
+        if self._fuzzy_search is None:
+            from ..search.fuzzy.symbol_fuzzy_matcher import SymbolFuzzyMatcher
+            self._fuzzy_search = SymbolFuzzyMatcher(
+                graph_store=self.graph_store,
+                config=self.config
+            )
+        return self._fuzzy_search
+    
+    @property
     def hybrid_retriever(self):
         """하이브리드 리트리버"""
         if self._hybrid_retriever is None:
@@ -189,7 +209,10 @@ class Bootstrap:
             self._hybrid_retriever = HybridRetriever(
                 lexical_search=self.lexical_search,
                 semantic_search=self.semantic_search,
-                graph_search=self.graph_search
+                graph_search=self.graph_search,
+                fuzzy_search=self.fuzzy_search,
+                chunk_store=self.chunk_store,
+                config=self.config
             )
         return self._hybrid_retriever
     

@@ -1,0 +1,73 @@
+[
+  {
+    "query": "User 클래스 정의",
+    "relevant_items": [
+      "src/core/models.py",
+      "src/auth/user.py"
+    ]
+  },
+  {
+    "query": "JWT 토큰 검증 로직",
+    "relevant_items": [
+      "src/auth/jwt.py",
+      "src/auth/middleware.py"
+    ]
+  },
+  {
+    "query": "데이터베이스 연결 설정",
+    "relevant_items": [
+      "src/core/config.py",
+      "src/core/bootstrap.py"
+    ]
+  },
+  {
+    "query": "에러 핸들링 코드",
+    "relevant_items": [
+      "src/api/error_handlers.py",
+      "src/core/exceptions.py"
+    ]
+  },
+  {
+    "query": "인증 플로우",
+    "relevant_items": [
+      "src/auth/login.py",
+      "src/auth/middleware.py",
+      "src/api/routes/auth.py"
+    ]
+  },
+  {
+    "query": "파일 업로드 처리",
+    "relevant_items": [
+      "src/api/routes/upload.py",
+      "src/storage/file_handler.py"
+    ]
+  },
+  {
+    "query": "API 라우터 정의",
+    "relevant_items": [
+      "src/api/main.py",
+      "src/api/routes/__init__.py"
+    ]
+  },
+  {
+    "query": "설정 파일 로드",
+    "relevant_items": [
+      "src/core/config.py"
+    ]
+  },
+  {
+    "query": "로깅 설정",
+    "relevant_items": [
+      "src/core/logging.py",
+      "src/core/config.py"
+    ]
+  },
+  {
+    "query": "테스트 케이스",
+    "relevant_items": [
+      "tests/conftest.py",
+      "tests/test_*.py"
+    ]
+  }
+]
+

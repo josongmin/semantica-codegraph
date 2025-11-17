@@ -62,9 +62,10 @@ def index(ctx: click.Context, repo_path: str, repo_id: Optional[str], name: Opti
             name=name,
         )
         click.echo(f"인덱싱 완료: {result.repo_id}")
-        click.echo(f"  - 노드: {result.nodes_count}개")
-        click.echo(f"  - 엣지: {result.edges_count}개")
-        click.echo(f"  - 청크: {result.chunks_count}개")
+        click.echo(f"  - 노드: {result.total_nodes}개")
+        click.echo(f"  - 엣지: {result.total_edges}개")
+        click.echo(f"  - 청크: {result.total_chunks}개")
+        click.echo(f"  - 소요시간: {result.duration_seconds:.2f}초")
     except Exception as e:
         click.echo(f"인덱싱 실패: {e}", err=True)
         sys.exit(1)

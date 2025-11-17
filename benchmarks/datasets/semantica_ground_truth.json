@@ -1,0 +1,75 @@
+[
+  {
+    "query": "하이브리드 리트리버 구현",
+    "relevant_items": [
+      "src/search/retriever/hybrid_retriever.py",
+      "src/search/ports/__init__.py"
+    ]
+  },
+  {
+    "query": "설정 파일 로드 로직",
+    "relevant_items": [
+      "src/core/config.py",
+      "src/core/bootstrap.py"
+    ]
+  },
+  {
+    "query": "PostgreSQL 연결 설정",
+    "relevant_items": [
+      "src/core/config.py",
+      "src/graph/store_postgres.py",
+      "src/embedding/store_pgvector.py"
+    ]
+  },
+  {
+    "query": "임베딩 서비스",
+    "relevant_items": [
+      "src/embedding/service.py",
+      "src/embedding/store_pgvector.py"
+    ]
+  },
+  {
+    "query": "퍼지 매칭 구현",
+    "relevant_items": [
+      "src/search/fuzzy/symbol_fuzzy_matcher.py",
+      "src/search/ports/fuzzy_search_port.py"
+    ]
+  },
+  {
+    "query": "청킹 알고리즘",
+    "relevant_items": [
+      "src/chunking/chunker.py",
+      "src/chunking/store.py"
+    ]
+  },
+  {
+    "query": "타입 힌트 파서",
+    "relevant_items": [
+      "src/parser/type_hint_analyzer.py",
+      "src/parser/python_parser.py"
+    ]
+  },
+  {
+    "query": "그래프 저장소",
+    "relevant_items": [
+      "src/graph/store_postgres.py",
+      "src/graph/ir_builder.py"
+    ]
+  },
+  {
+    "query": "검색 포트 정의",
+    "relevant_items": [
+      "src/search/ports/__init__.py",
+      "src/search/ports/lexical_search_port.py",
+      "src/search/ports/semantic_search_port.py"
+    ]
+  },
+  {
+    "query": "MCP 서버 핸들러",
+    "relevant_items": [
+      "apps/mcp_server/server.py",
+      "apps/mcp_server/handlers.py"
+    ]
+  }
+]
+
