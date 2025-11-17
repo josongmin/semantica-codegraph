@@ -38,12 +38,15 @@ class ScipParser(ParserPort):
     ):
         """
         Args:
-            scip_index_path: SCIP 인덱스 파일 경로 (.scip)
+            scip_index_path: SCIP 인덱스 파일/디렉토리 경로
+                - 단일 파일: index.scip
+                - 디렉토리: index/ (symbols.scip, occurrences.scip, metadata.json 포함)
             auto_index: True면 인덱스가 없을 때 자동 생성
         """
         self.scip_index_path = scip_index_path
         self.auto_index = auto_index
         self._index_data: Optional[Dict] = None
+        self._is_directory_format: bool = False
 
     def parse_file(
         self,
@@ -90,12 +93,41 @@ class ScipParser(ParserPort):
 
     def _ensure_index(self, file_meta: dict) -> bool:
         """SCIP 인덱스가 존재하는지 확인하고 필요시 생성"""
-        if self.scip_index_path and self.scip_index_path.exists():
+        # 명시적 경로가 있으면 확인
+        if self.scip_index_path:
+            if self.scip_index_path.exists():
+                # 디렉토리인지 파일인지 확인
+                self._is_directory_format = self.scip_index_path.is_dir()
+                return True
+            return False
+
+        # 자동 탐색: repo_root에서 찾기
+        repo_root = file_meta.get("repo_root", ".")
+        repo_path = Path(repo_root)
+
+        # 1. 단일 파일 확인 (index.scip)
+        index_file = repo_path / "index.scip"
+        if index_file.exists():
+            self.scip_index_path = index_file
+            self._is_directory_format = False
+            logger.debug(f"Found SCIP index file: {index_file}")
             return True
 
+        # 2. 디렉토리 구조 확인 (index/)
+        index_dir = repo_path / "index"
+        if index_dir.exists() and index_dir.is_dir():
+            symbols_file = index_dir / "symbols.scip"
+            occurrences_file = index_dir / "occurrences.scip"
+            if symbols_file.exists() or occurrences_file.exists():
+                self.scip_index_path = index_dir
+                self._is_directory_format = True
+                logger.debug(f"Found SCIP index directory: {index_dir}")
+                return True
+
+        # 자동 생성 시도
         if self.auto_index:
             logger.info("Auto-indexing with SCIP...")
-            return self._generate_scip_index(file_meta.get("repo_root", "."))
+            return self._generate_scip_index(repo_root)
 
         return False
 
@@ -188,11 +220,17 @@ class ScipParser(ParserPort):
         if not self.scip_index_path:
             return None
 
-        # TODO: 실제 SCIP protobuf 파싱 구현
-        # 현재는 placeholder
         logger.debug(f"Loading SCIP data for {file_path}")
-        
-        # scip snapshot 명령으로 JSON 변환 가능
+
+        # 디렉토리 구조 처리
+        if self._is_directory_format:
+            return self._load_from_directory(file_path)
+
+        # 단일 파일 구조 처리
+        return self._load_from_single_file(file_path)
+
+    def _load_from_single_file(self, file_path: str) -> Optional[Dict]:
+        """단일 index.scip 파일에서 데이터 로드"""
         try:
             result = subprocess.run(
                 ["scip", "snapshot", "--from", str(self.scip_index_path)],
@@ -200,18 +238,84 @@ class ScipParser(ParserPort):
                 text=True,
                 timeout=30
             )
-            
+
             if result.returncode == 0:
-                # JSON 파싱
                 snapshot = json.loads(result.stdout)
-                
-                # 파일에 해당하는 Document 찾기
                 for document in snapshot.get("documents", []):
                     if document.get("relative_path") == file_path:
                         return document
-                        
         except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
             logger.debug(f"Failed to load SCIP snapshot: {e}")
+
+        return None
+
+    def _load_from_directory(self, file_path: str) -> Optional[Dict]:
+        """디렉토리 구조(index/)에서 데이터 로드"""
+        index_dir = self.scip_index_path
+        if not index_dir or not index_dir.is_dir():
+            return None
+
+        # symbols.scip, occurrences.scip 파일 읽기
+        symbols_file = index_dir / "symbols.scip"
+        occurrences_file = index_dir / "occurrences.scip"
+        metadata_file = index_dir / "metadata.json"
+
+        document_data = {
+            "relative_path": file_path,
+            "symbols": [],
+            "occurrences": [],
+        }
+
+        # metadata.json 읽기
+        if metadata_file.exists():
+            try:
+                with open(metadata_file, "r") as f:
+                    metadata = json.load(f)
+                    document_data.update(metadata)
+            except json.JSONDecodeError as e:
+                logger.debug(f"Failed to parse metadata.json: {e}")
+
+        # symbols.scip 읽기
+        if symbols_file.exists():
+            try:
+                result = subprocess.run(
+                    ["scip", "snapshot", "--from", str(symbols_file)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if result.returncode == 0:
+                    snapshot = json.loads(result.stdout)
+                    # 파일에 해당하는 심볼만 필터링
+                    for doc in snapshot.get("documents", []):
+                        if doc.get("relative_path") == file_path:
+                            document_data["symbols"] = doc.get("symbols", [])
+                            break
+            except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+                logger.debug(f"Failed to load symbols.scip: {e}")
+
+        # occurrences.scip 읽기
+        if occurrences_file.exists():
+            try:
+                result = subprocess.run(
+                    ["scip", "snapshot", "--from", str(occurrences_file)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if result.returncode == 0:
+                    snapshot = json.loads(result.stdout)
+                    # 파일에 해당하는 발생 위치만 필터링
+                    for doc in snapshot.get("documents", []):
+                        if doc.get("relative_path") == file_path:
+                            document_data["occurrences"] = doc.get("occurrences", [])
+                            break
+            except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+                logger.debug(f"Failed to load occurrences.scip: {e}")
+
+        # 데이터가 있으면 반환
+        if document_data.get("symbols") or document_data.get("occurrences"):
+            return document_data
 
         return None
 

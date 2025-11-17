@@ -17,6 +17,7 @@ dependencies = [
     "tree-sitter-javascript>=0.21.0",
     "tree-sitter-typescript>=0.21.0",
     "protobuf>=4.21.0",  # SCIP uses protobuf
+    "alembic>=1.13.0",
 ]
 
 [project.optional-dependencies]
