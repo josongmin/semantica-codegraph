@@ -6,6 +6,7 @@ from typing import Optional
 
 from .base import BaseTreeSitterParser
 from .cache import ParseCache
+from .enhanced_parser import EnhancedParser
 from .hybrid_parser import HybridParser
 from .python_parser import PythonTreeSitterParser
 from .scip_parser import ScipParser
@@ -19,7 +20,9 @@ def create_parser(
     language: str,
     use_scip: bool = False,
     use_hybrid: bool = False,
-    scip_index_path: Optional[Path] = None
+    use_enhanced: bool = True,
+    scip_index_path: Optional[Path] = None,
+    framework: Optional[str] = None
 ) -> Optional[ParserPort]:
     """
     언어별 파서 생성
@@ -28,19 +31,27 @@ def create_parser(
         language: 언어 이름 (python, typescript, javascript 등)
         use_scip: True면 SCIP 파서만 사용
         use_hybrid: True면 하이브리드 파서 (Tree-sitter + SCIP)
+        use_enhanced: True면 Enhanced 파서 (Python만, 기본값)
         scip_index_path: SCIP 인덱스 파일 경로 (use_hybrid 시 사용)
+        framework: 프레임워크 ("django", "flask", None=auto-detect)
     
     Returns:
         ParserPort 구현체 (지원 안 되는 언어면 None)
     
     Example:
-        >>> # 1. Tree-sitter만 (빠름, 구조만)
+        >>> # 1. Enhanced 파서 (Python, 90% 커버리지, 기본값)
         >>> parser = create_parser("python")
         >>> 
-        >>> # 2. SCIP만 (타입/관계 포함)
+        >>> # 2. Enhanced with framework
+        >>> parser = create_parser("python", framework="django")
+        >>> 
+        >>> # 3. Tree-sitter만 (빠름, 기본 80%)
+        >>> parser = create_parser("python", use_enhanced=False)
+        >>> 
+        >>> # 4. SCIP만 (타입/관계 포함)
         >>> scip_parser = create_parser("python", use_scip=True)
         >>> 
-        >>> # 3. 하이브리드 (최고 품질)
+        >>> # 5. 하이브리드 (Tree-sitter + SCIP)
         >>> hybrid = create_parser("python", use_hybrid=True)
     """
     # SCIP만 사용
@@ -60,7 +71,11 @@ def create_parser(
             logger.warning(f"Language {language} not supported for hybrid parsing")
             return None
     
-    # Tree-sitter만 사용
+    # Enhanced 파서 (Python만, 기본값)
+    if use_enhanced and language.lower() == "python":
+        return EnhancedParser(framework=framework)
+    
+    # Tree-sitter만 사용 (fallback)
     return _create_tree_sitter_parser(language)
 
 
@@ -105,6 +120,7 @@ def create_scip_parser(scip_index_path: Optional[Path] = None) -> ScipParser:
 __all__ = [
     "BaseTreeSitterParser",
     "ParseCache",
+    "EnhancedParser",
     "PythonTreeSitterParser",
     "TypeScriptTreeSitterParser",
     "ScipParser",

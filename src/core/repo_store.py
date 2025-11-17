@@ -31,8 +31,20 @@ class RepoMetadataStore:
         self._ensure_tables()
 
     def _get_connection(self):
-        """DB 연결 생성"""
-        return psycopg2.connect(self.connection_string)
+        """
+        DB 연결 생성
+        
+        Returns:
+            psycopg2 connection
+            
+        Raises:
+            psycopg2.OperationalError: DB 연결 실패 시
+        """
+        try:
+            return psycopg2.connect(self.connection_string)
+        except psycopg2.OperationalError as e:
+            logger.error(f"Failed to connect to database: {e}")
+            raise
 
     def _ensure_tables(self):
         """테이블 생성"""
@@ -65,39 +77,51 @@ class RepoMetadataStore:
         logger.info("RepoMetadata table ensured")
 
     def save(self, metadata: RepoMetadata) -> None:
-        """저장소 메타데이터 저장"""
-        with self._get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO repo_metadata (
-                        repo_id, name, root_path, languages, 
-                        total_files, total_nodes, total_chunks, config
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (repo_id) DO UPDATE SET
-                        name = EXCLUDED.name,
-                        root_path = EXCLUDED.root_path,
-                        languages = EXCLUDED.languages,
-                        total_files = EXCLUDED.total_files,
-                        total_nodes = EXCLUDED.total_nodes,
-                        total_chunks = EXCLUDED.total_chunks,
-                        config = EXCLUDED.config
-                    """,
-                    (
-                        metadata.repo_id,
-                        metadata.name,
-                        metadata.root_path,
-                        metadata.languages,
-                        metadata.total_files,
-                        metadata.total_nodes,
-                        metadata.total_chunks,
-                        json.dumps(metadata.attrs)
+        """
+        저장소 메타데이터 저장
+        
+        Args:
+            metadata: 저장할 RepoMetadata
+            
+        Raises:
+            psycopg2.Error: DB 작업 실패 시
+        """
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO repo_metadata (
+                            repo_id, name, root_path, languages, 
+                            total_files, total_nodes, total_chunks, config
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (repo_id) DO UPDATE SET
+                            name = EXCLUDED.name,
+                            root_path = EXCLUDED.root_path,
+                            languages = EXCLUDED.languages,
+                            total_files = EXCLUDED.total_files,
+                            total_nodes = EXCLUDED.total_nodes,
+                            total_chunks = EXCLUDED.total_chunks,
+                            config = EXCLUDED.config
+                        """,
+                        (
+                            metadata.repo_id,
+                            metadata.name,
+                            metadata.root_path,
+                            metadata.languages,
+                            metadata.total_files,
+                            metadata.total_nodes,
+                            metadata.total_chunks,
+                            json.dumps(metadata.attrs)
+                        )
                     )
-                )
 
-                conn.commit()
+                    conn.commit()
 
-        logger.info(f"Saved metadata for repo: {metadata.repo_id}")
+            logger.info(f"Saved metadata for repo: {metadata.repo_id}")
+        except psycopg2.Error as e:
+            logger.error(f"Failed to save metadata for {metadata.repo_id}: {e}")
+            raise
 
     def get(self, repo_id: RepoId) -> Optional[RepoMetadata]:
         """저장소 메타데이터 조회"""
@@ -106,7 +130,8 @@ class RepoMetadataStore:
                 cur.execute(
                     """
                     SELECT repo_id, name, root_path, languages,
-                           last_indexed_at, total_files, total_nodes, total_chunks, config
+                           last_indexed_at, total_files, total_nodes, total_chunks,
+                           indexing_status, indexing_progress, config
                     FROM repo_metadata
                     WHERE repo_id = %s
                     """,
@@ -115,6 +140,15 @@ class RepoMetadataStore:
 
                 row = cur.fetchone()
                 if row:
+                    # JSONB는 자동으로 dict로 변환될 수 있음
+                    attrs_value = row[10]
+                    if attrs_value is None:
+                        attrs = {}
+                    elif isinstance(attrs_value, dict):
+                        attrs = attrs_value
+                    else:
+                        attrs = json.loads(attrs_value)
+                    
                     return RepoMetadata(
                         repo_id=row[0],
                         name=row[1],
@@ -124,7 +158,9 @@ class RepoMetadataStore:
                         total_files=row[5],
                         total_nodes=row[6],
                         total_chunks=row[7],
-                        attrs=row[8] if row[8] else {}
+                        indexing_status=row[8] if row[8] else "pending",
+                        indexing_progress=row[9] if row[9] else 0.0,
+                        attrs=attrs
                     )
 
         return None
@@ -136,26 +172,41 @@ class RepoMetadataStore:
                 cur.execute(
                     """
                     SELECT repo_id, name, root_path, languages,
-                           last_indexed_at, total_files, total_nodes, total_chunks, config
+                           last_indexed_at, total_files, total_nodes, total_chunks,
+                           indexing_status, indexing_progress, config
                     FROM repo_metadata
                     ORDER BY last_indexed_at DESC NULLS LAST
                     """
                 )
 
-                return [
-                    RepoMetadata(
-                        repo_id=row[0],
-                        name=row[1],
-                        root_path=row[2],
-                        languages=row[3] if row[3] else [],
-                        indexed_at=row[4],
-                        total_files=row[5],
-                        total_nodes=row[6],
-                        total_chunks=row[7],
-                        attrs=row[8] if row[8] else {}
+                results = []
+                for row in cur.fetchall():
+                    # JSONB는 자동으로 dict로 변환될 수 있음
+                    attrs_value = row[10]
+                    if attrs_value is None:
+                        attrs = {}
+                    elif isinstance(attrs_value, dict):
+                        attrs = attrs_value
+                    else:
+                        attrs = json.loads(attrs_value)
+                    
+                    results.append(
+                        RepoMetadata(
+                            repo_id=row[0],
+                            name=row[1],
+                            root_path=row[2],
+                            languages=row[3] if row[3] else [],
+                            indexed_at=row[4],
+                            total_files=row[5],
+                            total_nodes=row[6],
+                            total_chunks=row[7],
+                            indexing_status=row[8] if row[8] else "pending",
+                            indexing_progress=row[9] if row[9] else 0.0,
+                            attrs=attrs
+                        )
                     )
-                    for row in cur.fetchall()
-                ]
+                
+                return results
 
     def update_indexing_status(
         self,

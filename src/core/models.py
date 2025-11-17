@@ -125,6 +125,8 @@ class RepoMetadata:
     total_files: int = 0
     total_nodes: int = 0
     total_chunks: int = 0
+    indexing_status: str = "pending"  # "pending" | "indexing" | "completed" | "failed"
+    indexing_progress: float = 0.0
     attrs: Dict = field(default_factory=dict)  # git_url, branch, tags 등
 
 

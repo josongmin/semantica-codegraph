@@ -102,21 +102,37 @@ def main():
     print(f"예상 토큰: ~{estimated_tokens} 토큰")
     print(f"Primary: 1개, Supporting: {len(context.supporting)}개")
     
+    # 6. LLM 프롬프트 생성
+    print("\n6. LLM 프롬프트 생성")
+    print("-" * 80)
+    
+    # Markdown 형식 프롬프트
+    prompt_markdown = bootstrap.context_packer.to_prompt(
+        context=context,
+        query=query,
+        format="markdown"
+    )
+    
+    print("\n[Markdown 형식 프롬프트]")
+    print("=" * 80)
+    print(prompt_markdown)
+    print("=" * 80)
+    
+    # Plain 텍스트 형식 프롬프트
+    prompt_plain = bootstrap.context_packer.to_prompt(
+        context=context,
+        query=query,
+        format="plain"
+    )
+    
+    print("\n[Plain 텍스트 형식 프롬프트]")
+    print("=" * 80)
+    print(prompt_plain[:500] + "...")  # 일부만 표시
+    print("=" * 80)
+    
     print("\n" + "="*80)
     print("✅ 전체 파이프라인 완료!")
     print("="*80)
-    
-    # LLM에 전달할 최종 형식 예시
-    print("\nLLM에 전달할 컨텍스트 형식:")
-    print(f"""
-Primary Code ({context.primary.file_path}):
-```{context.primary.text.split(chr(10))[0].strip() if context.primary.text else ''}
-{context.primary.text[:200]}...
-```
-
-Supporting Code ({len(context.supporting)} snippets):
-{chr(10).join(f'- {s.file_path} (Line {s.span[0]}-{s.span[2]})' for s in context.supporting[:3])}
-""")
 
 
 if __name__ == "__main__":

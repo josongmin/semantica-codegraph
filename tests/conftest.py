@@ -1,9 +1,88 @@
 """공통 테스트 fixture"""
+import logging
+import os
+
 import pytest
 from datetime import datetime
 
 from src.core.models import RepoMetadata
 from src.core.repo_store import RepoMetadataStore
+
+logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(scope="function", autouse=True)
+def cleanup_test_data():
+    """
+    각 테스트 함수 실행 전에 테스트 데이터 정리
+    
+    테스트에서 사용하는 repo_id 패턴:
+    - test-repo*
+    - test*
+    - my-custom-id
+    - test-persistence
+    - test-full-integration
+    """
+    import psycopg2
+    from psycopg2 import pool
+    
+    # 환경변수 또는 기본값으로 DB 연결
+    postgres_host = os.getenv("POSTGRES_HOST", "localhost")
+    postgres_port = int(os.getenv("POSTGRES_PORT", "5433"))
+    postgres_user = os.getenv("POSTGRES_USER", "semantica")
+    postgres_password = os.getenv("POSTGRES_PASSWORD", "semantica")
+    postgres_db = os.getenv("POSTGRES_DB", "semantica_codegraph")
+    
+    conn_str = (
+        f"host={postgres_host} "
+        f"port={postgres_port} "
+        f"user={postgres_user} "
+        f"password={postgres_password} "
+        f"dbname={postgres_db}"
+    )
+    
+    try:
+        # DB 연결
+        conn = psycopg2.connect(conn_str)
+        cursor = conn.cursor()
+        
+        # 테스트용 repo_id 패턴 삭제
+        test_patterns = [
+            'test%',
+            'my-custom-id',
+        ]
+        
+        for pattern in test_patterns:
+            # repo_metadata 테이블에서 삭제 (CASCADE로 다른 테이블도 함께 삭제됨)
+            cursor.execute(
+                "DELETE FROM repo_metadata WHERE repo_id LIKE %s",
+                (pattern,)
+            )
+            
+            # 명시적으로 다른 테이블도 정리 (CASCADE가 없는 경우를 대비)
+            for table in ['code_chunks', 'embeddings', 'code_edges', 'code_nodes']:
+                cursor.execute(
+                    f"DELETE FROM {table} WHERE repo_id LIKE %s",
+                    (pattern,)
+                )
+        
+        conn.commit()
+        deleted_count = cursor.rowcount
+        
+        if deleted_count > 0:
+            logger.debug(f"Cleaned up test data (affected rows: {deleted_count})")
+        
+        cursor.close()
+        conn.close()
+        
+    except Exception as e:
+        logger.warning(f"Failed to cleanup test data: {e}")
+    
+    # 테스트 실행
+    yield
+    
+    # 테스트 후 정리 (필요시)
+    # 현재는 다음 테스트 전에 정리하므로 후처리는 불필요
 
 
 @pytest.fixture

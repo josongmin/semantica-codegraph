@@ -299,20 +299,90 @@ class IRBuilder:
         span: Span,
         symbol_to_id: Dict[Tuple, str]
     ) -> str | None:
-        """Span으로 node_id 찾기"""
-        # symbol_to_id 키는 (file_path, name, kind) 또는 (file_path, span)
-        # 여기서는 span으로 찾아야 함
+        """
+        Span으로 node_id 찾기
         
-        # 모든 심볼을 순회하며 span 매칭
+        symbol_to_id의 키 형식: (file_path, name, kind, span)
+        주어진 span과 매칭되는 심볼을 찾습니다.
+        
+        우선순위:
+        1. 정확히 일치하는 span
+        2. 주어진 span을 포함하는 심볼 (가장 작은 것)
+        3. 주어진 span과 겹치는 심볼 (가장 작은 것)
+        """
+        def spans_equal(span1: Span, span2: Span) -> bool:
+            """두 span이 정확히 일치하는지 확인"""
+            return span1 == span2
+        
+        def span_contains(span1: Span, span2: Span) -> bool:
+            """span1이 span2를 포함하는지 확인"""
+            s1_start_line, s1_start_col, s1_end_line, s1_end_col = span1
+            s2_start_line, s2_start_col, s2_end_line, s2_end_col = span2
+            
+            if s1_start_line > s2_start_line or s1_end_line < s2_end_line:
+                return False
+            
+            if s1_start_line == s2_start_line and s1_start_col > s2_start_col:
+                return False
+            
+            if s1_end_line == s2_end_line and s1_end_col < s2_end_col:
+                return False
+            
+            return True
+        
+        def spans_overlap(span1: Span, span2: Span) -> bool:
+            """두 span이 겹치는지 확인"""
+            s1_start_line, s1_start_col, s1_end_line, s1_end_col = span1
+            s2_start_line, s2_start_col, s2_end_line, s2_end_col = span2
+            
+            # 라인이 겹치는지 확인
+            if s1_end_line < s2_start_line or s2_end_line < s1_start_line:
+                return False
+            
+            # 같은 라인이면 컬럼도 확인
+            if s1_start_line == s1_end_line == s2_start_line == s2_end_line:
+                if s1_end_col < s2_start_col or s2_end_col < s1_start_col:
+                    return False
+            
+            return True
+        
+        exact_match = None
+        containing_candidates = []
+        overlapping_candidates = []
+        
         for key, node_id in symbol_to_id.items():
-            if len(key) >= 2 and key[0] == file_path:
-                # key가 span을 포함하는지 확인
-                # 실제로는 symbol_to_id를 만들 때 span도 포함해야 함
-                pass
+            # 키 형식: (file_path, name, kind, span)
+            if len(key) == 4 and key[0] == file_path:
+                symbol_span = key[3]
+                
+                # 1. 정확히 일치
+                if spans_equal(span, symbol_span):
+                    exact_match = node_id
+                    break  # 정확히 일치하면 바로 반환
+                
+                # 2. 포함 관계 (symbol_span이 span을 포함)
+                if span_contains(symbol_span, span):
+                    span_size = (symbol_span[2] - symbol_span[0], symbol_span[3] - symbol_span[1])
+                    containing_candidates.append((span_size, node_id))
+                
+                # 3. 겹침
+                elif spans_overlap(span, symbol_span):
+                    span_size = (symbol_span[2] - symbol_span[0], symbol_span[3] - symbol_span[1])
+                    overlapping_candidates.append((span_size, node_id))
         
-        # 간단한 구현: span 기반 키 사용
-        key = (file_path, span)
-        return symbol_to_id.get(key)
+        # 우선순위에 따라 반환
+        if exact_match:
+            return exact_match
+        
+        if containing_candidates:
+            containing_candidates.sort(key=lambda x: x[0])
+            return containing_candidates[0][1]
+        
+        if overlapping_candidates:
+            overlapping_candidates.sort(key=lambda x: x[0])
+            return overlapping_candidates[0][1]
+        
+        return None
 
     def _find_node_id_by_name(
         self,
@@ -321,16 +391,20 @@ class IRBuilder:
         name: str,
         symbol_to_id: Dict[Tuple, str]
     ) -> str | None:
-        """이름으로 node_id 찾기"""
+        """
+        이름으로 node_id 찾기
+        
+        symbol_to_id의 키 형식: (file_path, name, kind, span)
+        주어진 이름과 정확히 일치하는 심볼을 찾습니다.
+        """
         # 같은 파일에서 이름으로 찾기
         for key, node_id in symbol_to_id.items():
-            # key 형식에 따라 처리
-            if isinstance(key, tuple) and len(key) >= 2:
-                if key[0] == file_path:
-                    # RawSymbol 객체에서 이름 확인 필요
-                    # 간단하게 node_id에 이름이 포함되어 있는지 확인
-                    if name in node_id:
-                        return node_id
+            # 키 형식: (file_path, name, kind, span)
+            if len(key) == 4 and key[0] == file_path:
+                symbol_name = key[1]
+                # 정확히 일치하는 이름 찾기
+                if symbol_name == name:
+                    return node_id
         
         return None
 

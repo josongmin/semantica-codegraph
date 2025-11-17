@@ -1,6 +1,7 @@
 """검색 도메인 포트 정의"""
 
 from .context_packer_port import ContextPackerPort
+from .fuzzy_search_port import FuzzySearchPort
 from .graph_search_port import GraphSearchPort
 from .lexical_search_port import LexicalSearchPort
 from .ranker_port import RankerPort
@@ -12,5 +13,6 @@ __all__ = [
     "GraphSearchPort",
     "RankerPort",
     "ContextPackerPort",
+    "FuzzySearchPort",
 ]
 

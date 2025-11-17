@@ -44,10 +44,26 @@ class ParserPort(Protocol):
 # 그래프 저장소
 class GraphStorePort(Protocol):
     def save_graph(self, nodes: List[CodeNode], edges: List[CodeEdge]) -> None:
+        """
+        노드와 엣지를 그래프 저장소에 저장
+        
+        Args:
+            nodes: 저장할 CodeNode 리스트
+            edges: 저장할 CodeEdge 리스트
+        """
         ...
 
     def get_node(self, repo_id: RepoId, node_id: str) -> Optional[CodeNode]:
-        """단일 노드 조회"""
+        """
+        노드 ID로 단일 노드 조회
+        
+        Args:
+            repo_id: 저장소 ID
+            node_id: 노드 ID
+            
+        Returns:
+            CodeNode 또는 None
+        """
         ...
 
     def get_node_by_location(
@@ -57,6 +73,18 @@ class GraphStorePort(Protocol):
         line: int,
         column: int = 0,
     ) -> Optional[CodeNode]:
+        """
+        파일 위치로 노드 조회
+        
+        Args:
+            repo_id: 저장소 ID
+            file_path: 파일 경로
+            line: 라인 번호
+            column: 컬럼 번호
+            
+        Returns:
+            CodeNode 또는 None
+        """
         ...
 
     def neighbors(
@@ -66,20 +94,70 @@ class GraphStorePort(Protocol):
         edge_types: Optional[List[str]] = None,
         k: int = 1,
     ) -> List[CodeNode]:
+        """
+        노드의 이웃 노드 조회
+        
+        Args:
+            repo_id: 저장소 ID
+            node_id: 노드 ID
+            edge_types: 엣지 타입 필터 (예: ["calls", "uses"])
+            k: 홉 수 (1 = 직접 이웃만)
+            
+        Returns:
+            CodeNode 리스트
+        """
+        ...
+
+    def list_nodes(
+        self,
+        repo_id: RepoId,
+        kinds: Optional[List[str]] = None,
+    ) -> List[CodeNode]:
+        """
+        저장소의 모든 노드 조회
+        
+        Args:
+            repo_id: 저장소 ID
+            kinds: 필터할 노드 종류 (예: ["Class", "Function"])
+                   None이면 모든 종류 반환
+        
+        Returns:
+            CodeNode 리스트
+        """
         ...
 
     def delete_repo(self, repo_id: RepoId) -> None:
-        """저장소 전체 삭제"""
+        """
+        저장소 전체 삭제
+        
+        Args:
+            repo_id: 삭제할 저장소 ID
+        """
         ...
 
 
 # 청크 저장소
 class ChunkStorePort(Protocol):
     def save_chunks(self, chunks: List[CodeChunk]) -> None:
+        """
+        청크를 저장소에 저장
+        
+        Args:
+            chunks: 저장할 CodeChunk 리스트
+        """
         ...
 
     def get_chunk(self, repo_id: RepoId, chunk_id: str) -> Optional[CodeChunk]:
-        """단일 청크 조회"""
+        """
+        청크 ID로 단일 청크 조회
+        
+        Args:
+            repo_id: 저장소 ID
+            chunk_id: 청크 ID
+            
+        Returns:
+            CodeChunk 또는 None
+        """
         ...
 
     def get_chunks_by_node(
@@ -87,12 +165,31 @@ class ChunkStorePort(Protocol):
         repo_id: RepoId,
         node_id: str,
     ) -> List[CodeChunk]:
+        """
+        노드 ID로 연관된 청크 조회
+        
+        Args:
+            repo_id: 저장소 ID
+            node_id: 노드 ID
+            
+        Returns:
+            CodeChunk 리스트
+        """
         ...
 
 
 # 임베딩 저장소 / 검색
 class EmbeddingStorePort(Protocol):
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
+        """
+        텍스트를 임베딩 벡터로 변환
+        
+        Args:
+            texts: 변환할 텍스트 리스트
+            
+        Returns:
+            임베딩 벡터 리스트
+        """
         ...
 
     def save_embeddings(
@@ -101,6 +198,14 @@ class EmbeddingStorePort(Protocol):
         chunk_ids: List[str],
         vectors: List[List[float]],
     ) -> None:
+        """
+        임베딩 벡터를 저장소에 저장
+        
+        Args:
+            repo_id: 저장소 ID
+            chunk_ids: 청크 ID 리스트
+            vectors: 임베딩 벡터 리스트
+        """
         ...
 
     def search_by_vector(
@@ -110,20 +215,51 @@ class EmbeddingStorePort(Protocol):
         k: int,
         filters: Optional[Dict] = None,
     ) -> List[ChunkResult]:
+        """
+        벡터 유사도 기반 검색
+        
+        Args:
+            repo_id: 저장소 ID
+            vector: 쿼리 벡터
+            k: 반환할 결과 수
+            filters: 추가 필터 (예: {"language": "python"})
+            
+        Returns:
+            ChunkResult 리스트 (유사도 순)
+        """
         ...
 
 
 # 인덱스 매니저
 class IndexManagerPort(Protocol):
     def start_indexing(self, repo_id: RepoId, repo_root: str) -> None:
-        """인덱싱 시작"""
+        """
+        저장소 인덱싱 시작
+        
+        Args:
+            repo_id: 저장소 ID
+            repo_root: 저장소 루트 경로
+        """
         ...
 
     def get_status(self, repo_id: RepoId) -> Optional[IndexingStatus]:
-        """인덱싱 상태 조회"""
+        """
+        인덱싱 상태 조회
+        
+        Args:
+            repo_id: 저장소 ID
+            
+        Returns:
+            IndexingStatus 또는 None
+        """
         ...
 
     def cancel_indexing(self, repo_id: RepoId) -> None:
-        """인덱싱 취소"""
+        """
+        인덱싱 취소
+        
+        Args:
+            repo_id: 저장소 ID
+        """
         ...
 

@@ -71,7 +71,6 @@ def test_get_dimension_custom():
     assert dim == 256, "커스텀 차원 사용"
 
 
-@pytest.mark.skip(reason="Requires Mistral API key")
 def test_embed_text_codestral():
     """Codestral 임베딩 생성 테스트"""
     from src.embedding.service import EmbeddingService
@@ -85,18 +84,17 @@ def test_embed_text_codestral():
     service = EmbeddingService(
         model=EmbeddingModel.CODESTRAL_EMBED,
         api_key=config.embedding_api_key,
-        dimension=1024
     )
     
     text = "def calculate_total(items): return sum(item.price for item in items)"
     vector = service.embed_text(text)
     
-    assert len(vector) == 1024
+    # Codestral의 기본 차원은 1536
+    assert len(vector) == 1536
     assert all(isinstance(v, float) for v in vector)
     assert all(-1 <= v <= 1 for v in vector), "벡터 값 범위 확인"
 
 
-@pytest.mark.skip(reason="Requires Mistral API key")
 def test_embed_batch_codestral():
     """Codestral 배치 임베딩 테스트"""
     from src.embedding.service import EmbeddingService
@@ -110,7 +108,6 @@ def test_embed_batch_codestral():
     service = EmbeddingService(
         model=EmbeddingModel.CODESTRAL_EMBED,
         api_key=config.embedding_api_key,
-        dimension=1024
     )
     
     texts = [
@@ -122,10 +119,9 @@ def test_embed_batch_codestral():
     vectors = service.embed_texts(texts)
     
     assert len(vectors) == 3
-    assert all(len(v) == 1024 for v in vectors)
+    assert all(len(v) == 1536 for v in vectors)
 
 
-@pytest.mark.skip(reason="Requires Mistral API key")
 def test_embed_chunk_codestral(sample_chunk):
     """Codestral 청크 임베딩 테스트"""
     from src.embedding.service import EmbeddingService
@@ -139,11 +135,11 @@ def test_embed_chunk_codestral(sample_chunk):
     service = EmbeddingService(
         model=config.embedding_model,
         api_key=config.embedding_api_key,
-        dimension=1024
     )
     
     vector = service.embed_chunk(sample_chunk)
     
-    assert len(vector) == 1024
+    # 기본 차원 사용 (Codestral은 1536)
+    assert len(vector) == 1536
     assert isinstance(vector, list)
 

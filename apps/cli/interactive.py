@@ -17,6 +17,7 @@ from .tui import (
     console,
     select_directory,
     select_repo_from_list,
+    show_banner,
     show_menu,
     show_indexing_progress,
     show_search_results,
@@ -27,7 +28,11 @@ bootstrap = create_bootstrap()
 
 def handle_index_repo():
     """저장소 인덱싱 처리"""
-    console.print("\n[bold cyan]저장소 인덱싱[/bold cyan]\n")
+    import threading
+    import time
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+    
+    console.print("\n[bold cyan]저장소 선택 후 (재)인덱싱[/bold cyan]\n")
     
     # 디렉토리 선택
     repo_path = select_directory()
@@ -45,27 +50,91 @@ def handle_index_repo():
         repo_id = None
     
     # 인덱싱 시작
-    console.print(f"\n[bold yellow]인덱싱 시작 중...[/bold yellow]")
+    console.print(f"\n[bold yellow]인덱싱 시작[/bold yellow]")
     console.print(f"경로: {repo_path}")
-    console.print(f"이름: {repo_name}")
+    console.print(f"이름: {repo_name}\n")
     
-    try:
-        result = bootstrap.pipeline.index_repository(
-            root_path=repo_path,
-            repo_id=repo_id,
-            name=repo_name,
-        )
+    # 인덱싱 결과를 저장할 변수
+    result_container = {"result": None, "error": None, "done": False}
+    
+    # 백그라운드에서 인덱싱 실행
+    def run_indexing():
+        try:
+            result = bootstrap.pipeline.index_repository(
+                root_path=repo_path,
+                repo_id=repo_id,
+                name=repo_name,
+            )
+            result_container["result"] = result
+        except Exception as e:
+            result_container["error"] = e
+        finally:
+            result_container["done"] = True
+    
+    # 인덱싱 스레드 시작
+    indexing_thread = threading.Thread(target=run_indexing, daemon=True)
+    indexing_thread.start()
+    
+    # 실제 repo_id 얻기 (자동 생성된 경우)
+    actual_repo_id = repo_id if repo_id else Path(repo_path).resolve().name
+    
+    # 프로그레스 바 표시
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(complete_style="green", finished_style="bold green"),
+        TextColumn("[progress.percentage]{task.percentage:>3.1f}%"),
+        TextColumn("·"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    ) as progress:
+        task = progress.add_task("[cyan]인덱싱 중...", total=100)
         
-        console.print("\n[bold green]✓ 인덱싱 완료![/bold green]")
-        console.print(f"  저장소 ID: [cyan]{result.repo_id}[/cyan]")
-        console.print(f"  노드: [green]{result.nodes_count}개[/green]")
-        console.print(f"  엣지: [green]{result.edges_count}개[/green]")
-        console.print(f"  청크: [green]{result.chunks_count}개[/green]")
+        last_progress = 0.0
+        while not result_container["done"]:
+            try:
+                # 저장소 상태 조회
+                repo = bootstrap.repo_store.get(actual_repo_id)
+                if repo and repo.indexing_progress is not None:
+                    current_progress = repo.indexing_progress * 100
+                    
+                    # 진행률이 변경되었을 때만 업데이트
+                    if abs(current_progress - last_progress) > 0.1:
+                        progress.update(task, completed=current_progress)
+                        last_progress = current_progress
+                        
+                        # 단계별 설명 업데이트 (색상과 함께)
+                        if current_progress < 50:
+                            progress.update(task, description="[cyan]파일 파싱 중...")
+                        elif current_progress < 70:
+                            progress.update(task, description="[yellow]검색 인덱스 생성 중...")
+                        elif current_progress < 100:
+                            progress.update(task, description="[magenta]임베딩 생성 중...")
+            except Exception:
+                pass
+            
+            time.sleep(0.1)
         
-    except Exception as e:
-        console.print(f"\n[bold red]✗ 인덱싱 실패[/bold red]")
-        console.print(f"[red]{str(e)}[/red]")
+        # 완료
+        progress.update(task, completed=100, description="[bold green]완료!")
+    
+    # 결과 표시
+    if result_container["error"]:
+        console.print(f"\n[bold red]인덱싱 실패[/bold red]")
+        console.print(f"[red]{str(result_container['error'])}[/red]")
         console.print_exception()
+    elif result_container["result"]:
+        result = result_container["result"]
+        duration = result.duration_seconds
+        
+        console.print("\n[bold green]인덱싱 완료![/bold green]")
+        console.print(f"  저장소 ID: [cyan]{result.repo_id}[/cyan]")
+        console.print(f"  파일: [green]{result.total_files}개[/green]")
+        console.print(f"  노드: [green]{result.total_nodes}개[/green]")
+        console.print(f"  엣지: [green]{result.total_edges}개[/green]")
+        console.print(f"  청크: [green]{result.total_chunks}개[/green]")
+        console.print(f"  소요 시간: [yellow]{duration:.2f}초[/yellow]")
 
 
 def handle_search():
@@ -172,7 +241,7 @@ def handle_search():
         show_search_results(results, query)
         
     except Exception as e:
-        console.print(f"\n[bold red]✗ 검색 실패[/bold red]")
+        console.print(f"\n[bold red]검색 실패[/bold red]")
         console.print(f"[red]{str(e)}[/red]")
         console.print_exception()
 
@@ -237,15 +306,18 @@ def handle_delete_repo():
     try:
         bootstrap.repo_store.delete(repo_id)
         bootstrap.graph_store.delete_repo(repo_id)
-        console.print(f"\n[bold green]✓ 삭제 완료[/bold green]")
+        console.print(f"\n[bold green]삭제 완료[/bold green]")
     except Exception as e:
-        console.print(f"\n[bold red]✗ 삭제 실패[/bold red]")
+        console.print(f"\n[bold red]삭제 실패[/bold red]")
         console.print(f"[red]{str(e)}[/red]")
         console.print_exception()
 
 
 def run_interactive():
     """대화형 CLI 실행"""
+    # 랜딩 페이지 표시
+    show_banner()
+    
     try:
         # Bootstrap 초기화 확인
         _ = bootstrap

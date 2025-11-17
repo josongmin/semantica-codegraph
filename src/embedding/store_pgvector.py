@@ -4,6 +4,7 @@ import logging
 from typing import Dict, List, Optional
 
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import execute_batch
 
 from ..core.models import ChunkResult, RepoId
@@ -26,26 +27,50 @@ class PgVectorStore(EmbeddingStorePort):
         self,
         connection_string: str,
         embedding_dimension: int = 384,
-        model_name: str = "default"
+        model_name: str = "default",
+        pool_size: int = 10,
+        pool_max: int = 20
     ):
         """
         Args:
             connection_string: PostgreSQL 연결 문자열
             embedding_dimension: 벡터 차원 (모델에 따라)
             model_name: 임베딩 모델 이름
+            pool_size: 커넥션 풀 최소 크기
+            pool_max: 커넥션 풀 최대 크기
         """
         self.connection_string = connection_string
         self.embedding_dimension = embedding_dimension
         self.model_name = model_name
+        
+        # 커넥션 풀 생성
+        self._pool = pool.SimpleConnectionPool(
+            pool_size,
+            pool_max,
+            connection_string
+        )
+        logger.info(f"Created connection pool: min={pool_size}, max={pool_max}")
+        
         self._ensure_tables()
 
     def _get_connection(self):
-        """DB 연결 생성"""
-        return psycopg2.connect(self.connection_string)
+        """DB 연결 풀에서 가져오기"""
+        return self._pool.getconn()
+    
+    def _put_connection(self, conn):
+        """DB 연결 풀에 반환"""
+        self._pool.putconn(conn)
+    
+    def close(self):
+        """커넥션 풀 종료"""
+        if self._pool:
+            self._pool.closeall()
+            logger.info("Connection pool closed")
 
     def _ensure_tables(self):
         """테이블 생성"""
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             with conn.cursor() as cur:
                 # pgvector extension
                 cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
@@ -138,6 +163,8 @@ class PgVectorStore(EmbeddingStorePort):
                 """)
 
                 conn.commit()
+        finally:
+            self._put_connection(conn)
 
         logger.info("Embedding tables ensured")
 
@@ -165,7 +192,8 @@ class PgVectorStore(EmbeddingStorePort):
         if len(chunk_ids) != len(vectors):
             raise ValueError("chunk_ids and vectors length mismatch")
 
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             with conn.cursor() as cur:
                 embedding_data = [
                     (
@@ -190,6 +218,8 @@ class PgVectorStore(EmbeddingStorePort):
                 )
 
                 conn.commit()
+        finally:
+            self._put_connection(conn)
 
         logger.info(f"Saved {len(chunk_ids)} embeddings for {repo_id}")
 
@@ -212,7 +242,8 @@ class PgVectorStore(EmbeddingStorePort):
         Returns:
             ChunkResult 리스트 (코사인 유사도 기준)
         """
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             with conn.cursor() as cur:
                 # 기본 쿼리
                 query = """
@@ -258,13 +289,16 @@ class PgVectorStore(EmbeddingStorePort):
                             span=(row[3], row[4], row[5], row[6])
                         )
                     )
+        finally:
+            self._put_connection(conn)
 
         logger.debug(f"Vector search found {len(results)} results")
         return results
 
     def delete_repo_embeddings(self, repo_id: RepoId) -> None:
         """저장소의 모든 임베딩 삭제"""
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             with conn.cursor() as cur:
                 cur.execute(
                     "DELETE FROM embeddings WHERE repo_id = %s",
@@ -272,6 +306,8 @@ class PgVectorStore(EmbeddingStorePort):
                 )
                 deleted = cur.rowcount
                 conn.commit()
+        finally:
+            self._put_connection(conn)
 
         logger.info(f"Deleted {deleted} embeddings for repo: {repo_id}")
 

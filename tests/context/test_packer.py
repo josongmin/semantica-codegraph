@@ -1,10 +1,11 @@
 """ContextPacker 테스트"""
 
-import pytest
 from unittest.mock import MagicMock
 
-from src.core.models import Candidate, CodeChunk, PackedContext
+import pytest
+
 from src.context.packer import ContextPacker
+from src.core.models import Candidate, CodeChunk, PackedContext, PackedSnippet
 
 
 @pytest.fixture
@@ -46,7 +47,7 @@ def sample_candidates():
 def test_packer_basic(mock_stores, sample_candidates):
     """기본 패킹 테스트"""
     chunk_store, graph_store = mock_stores
-    
+
     # Primary chunk 설정
     chunk_store.get_chunk.return_value = CodeChunk(
         repo_id="test",
@@ -58,14 +59,14 @@ def test_packer_basic(mock_stores, sample_candidates):
         text="def hello():\n    return 'world'",
         attrs={}
     )
-    
+
     packer = ContextPacker(chunk_store, graph_store)
-    
+
     context = packer.pack(
         candidates=sample_candidates,
         max_tokens=1000
     )
-    
+
     assert context.primary is not None
     assert context.primary.role == "primary"
     assert context.primary.meta["chunk_id"] == "chunk-1"
@@ -75,7 +76,7 @@ def test_packer_basic(mock_stores, sample_candidates):
 def test_packer_with_supporting(mock_stores, sample_candidates):
     """Supporting snippets 포함 테스트"""
     chunk_store, graph_store = mock_stores
-    
+
     # Mock 청크 반환
     def get_chunk_side_effect(repo_id, chunk_id):
         chunks = {
@@ -96,19 +97,19 @@ def test_packer_with_supporting(mock_stores, sample_candidates):
             ),
         }
         return chunks.get(chunk_id)
-    
+
     chunk_store.get_chunk.side_effect = get_chunk_side_effect
-    
+
     packer = ContextPacker(chunk_store, graph_store)
-    
+
     context = packer.pack(
         candidates=sample_candidates,
         max_tokens=1000
     )
-    
+
     assert context.primary is not None
     assert len(context.supporting) > 0
-    
+
     # Supporting snippets는 "related" role
     for snippet in context.supporting:
         assert snippet.role in ["related", "caller", "callee"]
@@ -117,10 +118,10 @@ def test_packer_with_supporting(mock_stores, sample_candidates):
 def test_packer_token_limit(mock_stores, sample_candidates):
     """토큰 제한 테스트"""
     chunk_store, graph_store = mock_stores
-    
+
     # 긴 텍스트
     long_text = "def long_function():\n" + "    pass\n" * 100  # 매우 긴 함수
-    
+
     chunk_store.get_chunk.return_value = CodeChunk(
         repo_id="test",
         id="chunk-1",
@@ -131,15 +132,15 @@ def test_packer_token_limit(mock_stores, sample_candidates):
         text=long_text,
         attrs={}
     )
-    
+
     packer = ContextPacker(chunk_store, graph_store)
-    
+
     # 작은 토큰 제한
     context = packer.pack(
         candidates=sample_candidates,
         max_tokens=200
     )
-    
+
     # Primary만 포함되고 supporting은 거의 없어야 함
     assert context.primary is not None
     assert len(context.supporting) == 0  # 토큰 부족으로 supporting 없음
@@ -148,23 +149,29 @@ def test_packer_token_limit(mock_stores, sample_candidates):
 def test_packer_estimate_tokens():
     """토큰 추정 테스트"""
     packer = ContextPacker(MagicMock(), MagicMock())
-    
-    # 간단한 추정: 4글자 = 1토큰
-    text = "1234"
+
+    # tiktoken 사용 시 정확한 토큰 수 반환
+    text = "def hello(): pass"
     tokens = packer._estimate_tokens(text)
-    assert tokens == 1
-    
-    text = "12345678"
-    tokens = packer._estimate_tokens(text)
-    assert tokens == 2
+
+    # tiktoken이 로드되었는지 확인
+    if packer.encoding:
+        # tiktoken 사용: 정확한 값
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
+        expected = len(enc.encode(text))
+        assert tokens == expected
+    else:
+        # Fallback: 휴리스틱 사용 (대략적인 값)
+        assert tokens > 0
 
 
 def test_packer_empty_candidates(mock_stores):
     """빈 candidates 처리 테스트"""
     chunk_store, graph_store = mock_stores
-    
+
     packer = ContextPacker(chunk_store, graph_store)
-    
+
     with pytest.raises(ValueError, match="No candidates"):
         packer.pack([], max_tokens=1000)
 
@@ -172,12 +179,12 @@ def test_packer_empty_candidates(mock_stores):
 def test_packer_primary_not_found(mock_stores, sample_candidates):
     """Primary chunk를 찾을 수 없는 경우"""
     chunk_store, graph_store = mock_stores
-    
+
     # chunk_store가 None 반환
     chunk_store.get_chunk.return_value = None
-    
+
     packer = ContextPacker(chunk_store, graph_store)
-    
+
     with pytest.raises(ValueError, match="Primary chunk not found"):
         packer.pack(sample_candidates, max_tokens=1000)
 
@@ -185,7 +192,7 @@ def test_packer_primary_not_found(mock_stores, sample_candidates):
 def test_packer_metadata_preservation(mock_stores, sample_candidates):
     """메타데이터 보존 테스트"""
     chunk_store, graph_store = mock_stores
-    
+
     chunk_store.get_chunk.return_value = CodeChunk(
         repo_id="test",
         id="chunk-1",
@@ -196,14 +203,139 @@ def test_packer_metadata_preservation(mock_stores, sample_candidates):
         text="def hello(): pass",
         attrs={"docstring": "Hello function"}
     )
-    
+
     packer = ContextPacker(chunk_store, graph_store)
-    
+
     context = packer.pack(sample_candidates, max_tokens=1000)
-    
+
     # Meta 정보 확인
     assert "chunk_id" in context.primary.meta
     assert "node_id" in context.primary.meta
     assert "features" in context.primary.meta
     assert context.primary.meta["chunk_id"] == "chunk-1"
+
+
+def test_to_prompt_markdown(mock_stores):
+    """to_prompt() - Markdown 형식 테스트"""
+    chunk_store, graph_store = mock_stores
+    packer = ContextPacker(chunk_store, graph_store)
+
+    # PackedContext 생성
+    primary = PackedSnippet(
+        repo_id="test",
+        file_path="main.py",
+        span=(0, 0, 5, 0),
+        role="primary",
+        text="def hello():\n    return 'world'",
+        meta={"chunk_id": "chunk-1"}
+    )
+
+    supporting = [
+        PackedSnippet(
+            repo_id="test",
+            file_path="utils.py",
+            span=(0, 0, 3, 0),
+            role="caller",
+            text="def caller():\n    hello()",
+            meta={"chunk_id": "chunk-2"}
+        ),
+        PackedSnippet(
+            repo_id="test",
+            file_path="helpers.py",
+            span=(0, 0, 4, 0),
+            role="callee",
+            text="def helper():\n    pass",
+            meta={"chunk_id": "chunk-3"}
+        ),
+    ]
+
+    context = PackedContext(primary=primary, supporting=supporting)
+
+    # Markdown 형식 프롬프트 생성
+    prompt = packer.to_prompt(context, query="hello 함수", format="markdown")
+
+    # 검증
+    assert "## 검색 쿼리" in prompt
+    assert "hello 함수" in prompt
+    assert "## 코드 컨텍스트" in prompt
+    assert "### Primary Code" in prompt
+    assert "main.py" in prompt
+    assert "def hello():" in prompt
+    assert "### Supporting Code" in prompt
+    assert "호출하는 코드" in prompt
+    assert "호출되는 코드" in prompt
+    assert "```python" in prompt
+    assert "utils.py" in prompt
+    assert "helpers.py" in prompt
+
+
+def test_to_prompt_plain(mock_stores):
+    """to_prompt() - Plain 텍스트 형식 테스트"""
+    chunk_store, graph_store = mock_stores
+    packer = ContextPacker(chunk_store, graph_store)
+
+    # PackedContext 생성
+    primary = PackedSnippet(
+        repo_id="test",
+        file_path="main.py",
+        span=(0, 0, 5, 0),
+        role="primary",
+        text="def hello():\n    return 'world'",
+        meta={}
+    )
+
+    context = PackedContext(primary=primary, supporting=[])
+
+    # Plain 형식 프롬프트 생성
+    prompt = packer.to_prompt(context, query="hello", format="plain")
+
+    # 검증
+    assert "검색 쿼리: hello" in prompt
+    assert "코드 컨텍스트" in prompt
+    assert "[Primary]" in prompt
+    assert "main.py" in prompt
+    assert "def hello():" in prompt
+    assert "=" * 80 in prompt
+
+
+def test_to_prompt_without_query(mock_stores):
+    """to_prompt() - 쿼리 없이 테스트"""
+    chunk_store, graph_store = mock_stores
+    packer = ContextPacker(chunk_store, graph_store)
+
+    primary = PackedSnippet(
+        repo_id="test",
+        file_path="main.py",
+        span=(0, 0, 5, 0),
+        role="primary",
+        text="def hello(): pass",
+        meta={}
+    )
+
+    context = PackedContext(primary=primary, supporting=[])
+
+    # 쿼리 없이 프롬프트 생성
+    prompt = packer.to_prompt(context, format="markdown")
+
+    # 쿼리 섹션이 없어야 함
+    assert "## 검색 쿼리" not in prompt
+    assert "## 코드 컨텍스트" in prompt
+
+
+def test_detect_language(mock_stores):
+    """언어 감지 테스트"""
+    chunk_store, graph_store = mock_stores
+    packer = ContextPacker(chunk_store, graph_store)
+
+    # 다양한 파일 확장자 테스트
+    assert packer._detect_language("main.py") == "python"
+    assert packer._detect_language("app.ts") == "typescript"
+    assert packer._detect_language("component.tsx") == "typescript"
+    assert packer._detect_language("script.js") == "javascript"
+    assert packer._detect_language("App.jsx") == "javascript"
+    assert packer._detect_language("Main.java") == "java"
+    assert packer._detect_language("main.go") == "go"
+    assert packer._detect_language("lib.rs") == "rust"
+    assert packer._detect_language("config.yaml") == "yaml"
+    assert packer._detect_language("unknown.xyz") == "text"  # 알 수 없는 확장자
 

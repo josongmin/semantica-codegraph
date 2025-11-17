@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 
 from .base import BaseTreeSitterParser
 from .scip_parser import ScipParser
+from .type_hint_analyzer import TypeHintAnalyzer
 from ..core.models import RawRelation, RawSymbol, Span
 from ..core.ports import ParserPort
 
@@ -39,17 +40,26 @@ class HybridParser(ParserPort):
         self,
         tree_sitter_parser: BaseTreeSitterParser,
         scip_parser: Optional[ScipParser] = None,
-        prefer_tree_sitter_span: bool = True
+        prefer_tree_sitter_span: bool = True,
+        enable_type_hint_analysis: bool = True
     ):
         """
         Args:
             tree_sitter_parser: Tree-sitter 파서 인스턴스
             scip_parser: SCIP 파서 인스턴스 (None이면 Tree-sitter만 사용)
             prefer_tree_sitter_span: True면 span은 Tree-sitter 우선
+            enable_type_hint_analysis: Python 타입 힌트 분석 활성화
         """
         self.tree_sitter = tree_sitter_parser
         self.scip = scip_parser
         self.prefer_tree_sitter_span = prefer_tree_sitter_span
+        self.enable_type_hint_analysis = enable_type_hint_analysis
+        
+        # 타입 힌트 분석기 (Python만 지원)
+        if enable_type_hint_analysis:
+            self.type_hint_analyzer = TypeHintAnalyzer()
+        else:
+            self.type_hint_analyzer = None
 
     def parse_file(
         self,
@@ -71,23 +81,32 @@ class HybridParser(ParserPort):
         # 2. SCIP가 없으면 Tree-sitter 결과만 반환
         if self.scip is None:
             logger.debug("SCIP parser not available, using Tree-sitter only")
-            return ts_symbols, ts_relations
+            symbols, relations = ts_symbols, ts_relations
+        else:
+            # 3. SCIP로 의미론적 정보 추가
+            logger.debug(f"Parsing with SCIP: {file_meta['path']}")
+            scip_symbols, scip_relations = self.scip.parse_file(file_meta)
 
-        # 3. SCIP로 의미론적 정보 추가
-        logger.debug(f"Parsing with SCIP: {file_meta['path']}")
-        scip_symbols, scip_relations = self.scip.parse_file(file_meta)
+            # 4. 병합
+            symbols = self._merge_symbols(ts_symbols, scip_symbols)
+            relations = self._merge_relations(ts_relations, scip_relations)
 
-        # 4. 병합
-        merged_symbols = self._merge_symbols(ts_symbols, scip_symbols)
-        merged_relations = self._merge_relations(ts_relations, scip_relations)
+            logger.info(
+                f"Hybrid parsing completed for {file_meta['path']}: "
+                f"{len(symbols)} symbols ({len(ts_symbols)} TS + {len(scip_symbols)} SCIP), "
+                f"{len(relations)} relations ({len(ts_relations)} TS + {len(scip_relations)} SCIP)"
+            )
+        
+        # 5. 타입 힌트 분석 (Python 파일만)
+        if self.type_hint_analyzer and file_meta.get('language') == 'python':
+            type_hint_relations = self._analyze_type_hints(file_meta)
+            if type_hint_relations:
+                relations.extend(type_hint_relations)
+                logger.info(
+                    f"Type hint analysis: {len(type_hint_relations)} dynamic calls inferred"
+                )
 
-        logger.info(
-            f"Hybrid parsing completed for {file_meta['path']}: "
-            f"{len(merged_symbols)} symbols ({len(ts_symbols)} TS + {len(scip_symbols)} SCIP), "
-            f"{len(merged_relations)} relations ({len(ts_relations)} TS + {len(scip_relations)} SCIP)"
-        )
-
-        return merged_symbols, merged_relations
+        return symbols, relations
 
     def _merge_symbols(
         self,
@@ -278,4 +297,44 @@ class HybridParser(ParserPort):
             candidates,
             key=lambda s: (s.span[2] - s.span[0], s.span[3] - s.span[1])
         )
+    
+    def _analyze_type_hints(self, file_meta: dict) -> List[RawRelation]:
+        """
+        타입 힌트 기반 동적 호출 추론
+        
+        Args:
+            file_meta: 파일 메타데이터
+        
+        Returns:
+            추론된 RawRelation 리스트
+        """
+        # 파일 읽기
+        try:
+            with open(file_meta['abs_path'], 'r', encoding='utf-8') as f:
+                code = f.read()
+        except Exception as e:
+            logger.warning(f"Failed to read file for type hint analysis: {e}")
+            return []
+        
+        # 타입 힌트 분석
+        inferred_calls = self.type_hint_analyzer.analyze(code, file_meta['path'])
+        
+        # InferredCall을 RawRelation으로 변환
+        relations = []
+        for call in inferred_calls:
+            relations.append(
+                RawRelation(
+                    source=call.source,
+                    target=call.target,
+                    type="calls",
+                    attrs={
+                        "confidence": call.confidence,
+                        "inferred": True,
+                        "method": "type_hint",
+                        "line": call.line
+                    }
+                )
+            )
+        
+        return relations
 
