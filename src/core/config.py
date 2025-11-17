@@ -21,6 +21,7 @@ class Config:
 
     # Zoekt 설정
     zoekt_url: str = "http://localhost:6070"
+    zoekt_timeout: int = 30  # HTTP 요청 타임아웃 (초)
 
     # 검색 백엔드 선택
     lexical_search_backend: LexicalSearchBackend = LexicalSearchBackend.MEILISEARCH
@@ -44,6 +45,7 @@ class Config:
             meilisearch_url=os.getenv("MEILISEARCH_URL", "http://localhost:7700"),
             meilisearch_master_key=os.getenv("MEILISEARCH_MASTER_KEY"),
             zoekt_url=os.getenv("ZOEKT_URL", "http://localhost:6070"),
+            zoekt_timeout=int(os.getenv("ZOEKT_TIMEOUT", "30")),
             lexical_search_backend=LexicalSearchBackend(
                 os.getenv("LEXICAL_SEARCH_BACKEND", LexicalSearchBackend.MEILISEARCH.value)
             ),

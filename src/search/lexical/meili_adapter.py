@@ -2,10 +2,15 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from meilisearch import Client
-from meilisearch.errors import MeilisearchApiError
 
 from ...core.models import CodeChunk, ChunkResult, RepoId
 from ..ports.lexical_search_port import LexicalSearchPort
+
+try:
+    from meilisearch.errors import MeilisearchApiError
+except ImportError:
+    # meilisearch 패키지가 설치되지 않은 경우 fallback
+    MeilisearchApiError = Exception  # type: ignore
 
 logger = logging.getLogger(__name__)
 

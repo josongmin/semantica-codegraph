@@ -1,0 +1,2 @@
+"""Tests for semantica-codegraph"""
+
