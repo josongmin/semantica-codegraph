@@ -1,4 +1,5 @@
-"""Graph Search 어댑터"""
+"""Graph 검색 모듈"""
 
-__all__ = []
+from .postgres_graph_adapter import PostgresGraphSearch
 
+__all__ = ["PostgresGraphSearch"]

@@ -50,17 +50,70 @@ class PgVectorStore(EmbeddingStorePort):
                 # pgvector extension
                 cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-                # embeddings 테이블
-                cur.execute(f"""
-                    CREATE TABLE IF NOT EXISTS embeddings (
-                        repo_id TEXT NOT NULL,
-                        chunk_id TEXT NOT NULL,
-                        model TEXT NOT NULL,
-                        embedding vector({self.embedding_dimension}),
-                        created_at TIMESTAMP DEFAULT NOW(),
-                        PRIMARY KEY (repo_id, chunk_id, model)
+                # 기존 테이블 존재 여부 확인
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'embeddings'
                     )
                 """)
+                table_exists = cur.fetchone()[0]
+                
+                # 테이블이 존재하면 차원 확인
+                if table_exists:
+                    # information_schema에서 컬럼 정의 확인
+                    cur.execute("""
+                        SELECT 
+                            udt_name,
+                            character_maximum_length
+                        FROM information_schema.columns
+                        WHERE table_name = 'embeddings' 
+                        AND column_name = 'embedding'
+                    """)
+                    try:
+                        col_info = cur.fetchone()
+                        if col_info:
+                            # pgvector는 udt_name이 'vector'이고 차원은 별도로 저장되지 않음
+                            # 대신 pg_attribute에서 확인
+                            cur.execute("""
+                                SELECT 
+                                    format_type(atttypid, atttypmod) as type_name
+                                FROM pg_attribute
+                                WHERE attrelid = 'embeddings'::regclass
+                                AND attname = 'embedding'
+                            """)
+                            type_result = cur.fetchone()
+                            if type_result and type_result[0]:
+                                # vector(384) 형식에서 숫자 추출
+                                import re
+                                match = re.search(r'vector\((\d+)\)', type_result[0])
+                                if match:
+                                    existing_dim = int(match.group(1))
+                                    if existing_dim != self.embedding_dimension:
+                                        logger.info(
+                                            f"Recreating embeddings table: "
+                                            f"{existing_dim} -> {self.embedding_dimension} dimensions"
+                                        )
+                                        cur.execute("DROP TABLE IF EXISTS embeddings CASCADE")
+                                        table_exists = False
+                    except Exception as e:
+                        # 오류 발생 시 재생성
+                        logger.debug(f"Could not check dimension, recreating table: {e}")
+                        cur.execute("DROP TABLE IF EXISTS embeddings CASCADE")
+                        table_exists = False
+
+                # embeddings 테이블 생성
+                if not table_exists:
+                    cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS embeddings (
+                            repo_id TEXT NOT NULL,
+                            chunk_id TEXT NOT NULL,
+                            model TEXT NOT NULL,
+                            embedding vector({self.embedding_dimension}),
+                            created_at TIMESTAMP DEFAULT NOW(),
+                            PRIMARY KEY (repo_id, chunk_id, model)
+                        )
+                    """)
 
                 # HNSW 인덱스 (빠른 근사 검색)
                 # PostgreSQL 16+ 필요

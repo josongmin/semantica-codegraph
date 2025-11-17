@@ -32,7 +32,6 @@ def multiply(a, b):
     return tmp_path
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
 def test_pipeline_basic_flow(test_repo):
     """기본 파이프라인 테스트"""
     bootstrap = create_bootstrap()
@@ -50,7 +49,6 @@ def test_pipeline_basic_flow(test_repo):
     assert result.duration_seconds > 0
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
 def test_pipeline_with_config(test_repo):
     """설정이 있는 파이프라인 테스트"""
     bootstrap = create_bootstrap()
@@ -70,7 +68,6 @@ def test_pipeline_with_config(test_repo):
     assert result.total_files == 2
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
 def test_pipeline_custom_repo_id(test_repo):
     """커스텀 repo_id 테스트"""
     bootstrap = create_bootstrap()
@@ -85,7 +82,6 @@ def test_pipeline_custom_repo_id(test_repo):
     assert result.repo_id == "my-custom-id"
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
 def test_pipeline_empty_directory(tmp_path):
     """빈 디렉토리 테스트"""
     bootstrap = create_bootstrap()
@@ -100,7 +96,6 @@ def test_pipeline_empty_directory(tmp_path):
     assert result.total_nodes == 0
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
 def test_pipeline_metadata_persistence(test_repo):
     """메타데이터 저장 테스트"""
     bootstrap = create_bootstrap()

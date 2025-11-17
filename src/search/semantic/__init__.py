@@ -1,4 +1,5 @@
-"""Semantic Search 어댑터"""
+"""Semantic 검색 모듈"""
 
-__all__ = []
+from .pgvector_adapter import PgVectorSemanticSearch
 
+__all__ = ["PgVectorSemanticSearch"]

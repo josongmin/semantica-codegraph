@@ -15,7 +15,7 @@ def connection_string():
     """테스트용 연결 문자열"""
     return os.getenv(
         "TEST_DB_URL",
-        "host=localhost dbname=semantica_test user=semantica password=semantica"
+        "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
     )
 
 
@@ -62,16 +62,17 @@ def sample_edges():
     ]
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
 def test_store_initialization(connection_string):
     """GraphStore 초기화 테스트"""
     store = PostgresGraphStore(connection_string)
     assert store is not None
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
-def test_save_and_retrieve(connection_string, sample_nodes, sample_edges):
+def test_save_and_retrieve(connection_string, sample_nodes, sample_edges, ensure_test_repo):
     """저장 및 조회 테스트"""
+    # 저장소 메타데이터 먼저 생성
+    ensure_test_repo(connection_string)
+    
     store = PostgresGraphStore(connection_string)
     
     # 저장
@@ -83,9 +84,11 @@ def test_save_and_retrieve(connection_string, sample_nodes, sample_edges):
     assert node.name == "User"
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
-def test_get_node_by_location(connection_string, sample_nodes):
+def test_get_node_by_location(connection_string, sample_nodes, ensure_test_repo):
     """위치 기반 조회 테스트"""
+    # 저장소 메타데이터 먼저 생성
+    ensure_test_repo(connection_string)
+    
     store = PostgresGraphStore(connection_string)
     store.save_graph(sample_nodes, [])
     
@@ -95,9 +98,11 @@ def test_get_node_by_location(connection_string, sample_nodes):
     # User.save 메서드가 있어야 함 (span: 5-8)
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
-def test_neighbors(connection_string, sample_nodes, sample_edges):
+def test_neighbors(connection_string, sample_nodes, sample_edges, ensure_test_repo):
     """이웃 노드 조회 테스트"""
+    # 저장소 메타데이터 먼저 생성
+    ensure_test_repo(connection_string)
+    
     store = PostgresGraphStore(connection_string)
     store.save_graph(sample_nodes, sample_edges)
     
@@ -106,9 +111,11 @@ def test_neighbors(connection_string, sample_nodes, sample_edges):
     assert len(neighbors) > 0
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
-def test_delete_repo(connection_string, sample_nodes):
+def test_delete_repo(connection_string, sample_nodes, ensure_test_repo):
     """저장소 삭제 테스트"""
+    # 저장소 메타데이터 먼저 생성
+    ensure_test_repo(connection_string)
+    
     store = PostgresGraphStore(connection_string)
     store.save_graph(sample_nodes, [])
     

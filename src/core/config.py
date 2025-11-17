@@ -34,8 +34,16 @@ class Config:
 
     @classmethod
     def from_env(cls) -> "Config":
-        """환경변수에서 설정 로드"""
+        """환경변수에서 설정 로드 (.env 파일 자동 로드)"""
         import os
+        
+        # .env 파일 로드 (존재하는 경우)
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            # python-dotenv가 설치되지 않은 경우 무시
+            pass
 
         return cls(
             postgres_host=os.getenv("POSTGRES_HOST", "localhost"),

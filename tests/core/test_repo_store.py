@@ -29,12 +29,11 @@ def test_repo_metadata_creation(sample_metadata):
     assert len(sample_metadata.languages) == 2
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
 def test_save_metadata(sample_metadata):
     """메타데이터 저장 테스트"""
     from src.core.repo_store import RepoMetadataStore
     
-    conn_str = "host=localhost dbname=semantica_test user=semantica"
+    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
     store = RepoMetadataStore(conn_str)
     
     store.save(sample_metadata)
@@ -46,25 +45,23 @@ def test_save_metadata(sample_metadata):
     assert retrieved.total_files == 10
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
 def test_list_all_repos():
     """모든 저장소 목록 조회 테스트"""
     from src.core.repo_store import RepoMetadataStore
     
-    conn_str = "host=localhost dbname=semantica_test user=semantica"
+    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
     store = RepoMetadataStore(conn_str)
     
     repos = store.list_all()
     assert isinstance(repos, list)
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
 def test_update_indexing_status():
     """인덱싱 상태 업데이트 테스트"""
     from src.core.repo_store import RepoMetadataStore
     from src.core.models import RepoMetadata
     
-    conn_str = "host=localhost dbname=semantica_test user=semantica"
+    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
     store = RepoMetadataStore(conn_str)
     
     # 저장소 등록

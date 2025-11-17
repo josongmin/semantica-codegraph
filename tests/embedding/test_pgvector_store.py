@@ -27,25 +27,67 @@ def test_vector_dimension():
     assert len(vector) == 384
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL with pgvector")
-def test_save_embeddings(sample_chunk_ids, sample_vectors):
+def test_save_embeddings(sample_chunk_ids, sample_vectors, ensure_test_repo):
     """임베딩 저장 테스트"""
     from src.embedding.store_pgvector import PgVectorStore
+    from src.chunking.store import PostgresChunkStore
+    from src.core.models import CodeChunk
     
-    conn_str = "host=localhost dbname=semantica_test user=semantica"
+    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
+    
+    # 저장소 메타데이터 생성
+    ensure_test_repo(conn_str)
+    
+    # 청크 먼저 저장 (외래 키 제약)
+    chunk_store = PostgresChunkStore(conn_str)
+    chunks = [
+        CodeChunk(
+            repo_id="test-repo",
+            id=chunk_id,
+            node_id=f"node-{chunk_id}",
+            file_path="test.py",
+            span=(0, 0, 10, 0),
+            language="python",
+            text=f"chunk {chunk_id}",
+            attrs={}
+        )
+        for chunk_id in sample_chunk_ids
+    ]
+    chunk_store.save_chunks(chunks)
+    
     store = PgVectorStore(conn_str, embedding_dimension=384)
-    
     store.save_embeddings("test-repo", sample_chunk_ids, sample_vectors)
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL with pgvector")
-def test_vector_search(sample_chunk_ids, sample_vectors):
+def test_vector_search(sample_chunk_ids, sample_vectors, ensure_test_repo):
     """벡터 검색 테스트"""
     from src.embedding.store_pgvector import PgVectorStore
+    from src.chunking.store import PostgresChunkStore
+    from src.core.models import CodeChunk
     
-    conn_str = "host=localhost dbname=semantica_test user=semantica"
+    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
+    
+    # 저장소 메타데이터 생성
+    ensure_test_repo(conn_str)
+    
+    # 청크 먼저 저장
+    chunk_store = PostgresChunkStore(conn_str)
+    chunks = [
+        CodeChunk(
+            repo_id="test-repo",
+            id=chunk_id,
+            node_id=f"node-{chunk_id}",
+            file_path="test.py",
+            span=(0, 0, 10, 0),
+            language="python",
+            text=f"chunk {chunk_id}",
+            attrs={}
+        )
+        for chunk_id in sample_chunk_ids
+    ]
+    chunk_store.save_chunks(chunks)
+    
     store = PgVectorStore(conn_str, embedding_dimension=384)
-    
     # 저장
     store.save_embeddings("test-repo", sample_chunk_ids, sample_vectors)
     
@@ -57,14 +99,35 @@ def test_vector_search(sample_chunk_ids, sample_vectors):
     assert results[0].score > 0.0  # 코사인 유사도
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL with pgvector")
-def test_vector_search_with_filters(sample_chunk_ids, sample_vectors):
+def test_vector_search_with_filters(sample_chunk_ids, sample_vectors, ensure_test_repo):
     """벡터 검색 + 필터 테스트"""
     from src.embedding.store_pgvector import PgVectorStore
+    from src.chunking.store import PostgresChunkStore
+    from src.core.models import CodeChunk
     
-    conn_str = "host=localhost dbname=semantica_test user=semantica"
+    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
+    
+    # 저장소 메타데이터 생성
+    ensure_test_repo(conn_str)
+    
+    # 청크 먼저 저장
+    chunk_store = PostgresChunkStore(conn_str)
+    chunks = [
+        CodeChunk(
+            repo_id="test-repo",
+            id=chunk_id,
+            node_id=f"node-{chunk_id}",
+            file_path="test.py",
+            span=(0, 0, 10, 0),
+            language="python",
+            text=f"chunk {chunk_id}",
+            attrs={}
+        )
+        for chunk_id in sample_chunk_ids
+    ]
+    chunk_store.save_chunks(chunks)
+    
     store = PgVectorStore(conn_str, embedding_dimension=384)
-    
     store.save_embeddings("test-repo", sample_chunk_ids, sample_vectors)
     
     # 필터 적용

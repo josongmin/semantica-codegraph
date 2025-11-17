@@ -18,6 +18,7 @@ dependencies = [
     "tree-sitter-typescript>=0.21.0",
     "protobuf>=4.21.0",  # SCIP uses protobuf
     "mistralai>=1.0.0",  # Mistral Codestral Embed
+    "python-dotenv>=1.0.0",  # .env 파일 로드
 ]
 
 [project.optional-dependencies]

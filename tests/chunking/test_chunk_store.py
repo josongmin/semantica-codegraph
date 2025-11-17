@@ -49,12 +49,14 @@ def test_chunk_store_initialization():
     pass
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
-def test_save_chunks(sample_chunks):
+def test_save_chunks(sample_chunks, ensure_test_repo):
     """청크 저장 테스트"""
-    conn_str = "host=localhost dbname=semantica_test user=semantica"
-    store = PostgresChunkStore(conn_str)
+    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
     
+    # 저장소 메타데이터 먼저 생성
+    ensure_test_repo(conn_str)
+    
+    store = PostgresChunkStore(conn_str)
     store.save_chunks(sample_chunks)
     
     # 조회로 검증
@@ -63,12 +65,14 @@ def test_save_chunks(sample_chunks):
     assert chunk.text == "def foo():\n    return 42"
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
-def test_find_by_location(sample_chunks):
+def test_find_by_location(sample_chunks, ensure_test_repo):
     """위치로 청크 조회 (Zoekt 매핑 테스트)"""
-    conn_str = "host=localhost dbname=semantica_test user=semantica"
-    store = PostgresChunkStore(conn_str)
+    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
     
+    # 저장소 메타데이터 먼저 생성
+    ensure_test_repo(conn_str)
+    
+    store = PostgresChunkStore(conn_str)
     store.save_chunks(sample_chunks)
     
     # main.py의 15번 라인 (chunk-1에 포함됨: span 10-20)
@@ -87,12 +91,14 @@ def test_find_by_location(sample_chunks):
     assert chunk.id == "chunk-3"
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL connection")
-def test_get_chunks_by_node(sample_chunks):
+def test_get_chunks_by_node(sample_chunks, ensure_test_repo):
     """노드로 청크 조회 테스트"""
-    conn_str = "host=localhost dbname=semantica_test user=semantica"
-    store = PostgresChunkStore(conn_str)
+    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
     
+    # 저장소 메타데이터 먼저 생성
+    ensure_test_repo(conn_str)
+    
+    store = PostgresChunkStore(conn_str)
     store.save_chunks(sample_chunks)
     
     chunks = store.get_chunks_by_node("test-repo", "test-repo:main.py:Function:foo")

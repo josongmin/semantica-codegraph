@@ -1,4 +1,5 @@
-"""Ranker 구현"""
+"""Ranking 모듈"""
 
-__all__ = []
+from .ranker import Ranker
 
+__all__ = ["Ranker"]

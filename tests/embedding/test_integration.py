@@ -16,8 +16,8 @@ def _get_test_config():
     config = Config.from_env()
     
     # 필수 환경 확인
-    if not config.embedding_api_key:
-        pytest.skip("EMBEDDING_API_KEY not set")
+    if not config.embedding_api_key or config.embedding_api_key == "your_mistral_api_key_here":
+        pytest.skip("EMBEDDING_API_KEY not set or invalid")
     
     # PostgreSQL 연결 확인
     try:

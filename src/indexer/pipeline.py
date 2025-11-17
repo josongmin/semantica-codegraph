@@ -146,10 +146,11 @@ class IndexingPipeline:
                     raw_symbols, raw_relations = self._parse_file(repo_id, file_meta)
                     
                     # IR 변환
+                    file_content = self._read_file(file_meta.abs_path)
                     nodes, edges = self.ir_builder.build(
-                        file_content=self._read_file(file_meta.abs_path),
                         raw_symbols=raw_symbols,
-                        raw_relations=raw_relations
+                        raw_relations=raw_relations,
+                        source_code={file_meta.file_path: file_content}
                     )
                     
                     all_nodes.extend(nodes)
@@ -263,8 +264,9 @@ class IndexingPipeline:
         
         return parser.parse_file({
             "repo_id": repo_id,
-            "file_path": file_meta.file_path,
-            "abs_path": file_meta.abs_path,
+            "path": file_meta.file_path,  # 상대 경로 (base.py에서 사용)
+            "file_path": file_meta.file_path,  # 호환성을 위해 유지
+            "abs_path": file_meta.abs_path,  # 절대 경로
             "language": file_meta.language
         })
     
