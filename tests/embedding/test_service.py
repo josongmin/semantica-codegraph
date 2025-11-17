@@ -44,7 +44,7 @@ def test_get_dimension_codestral():
     service.dimension = None
     
     dim = service.get_dimension()
-    assert dim == 1024, "Codestral 기본 차원은 1024"
+    assert dim == 1536, "Codestral 기본 차원은 1536"
 
 
 def test_get_dimension_openai_small():

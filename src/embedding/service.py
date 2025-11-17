@@ -287,7 +287,7 @@ class EmbeddingService:
 
         # 모델별 기본 차원
         dimension_map = {
-            EmbeddingModel.CODESTRAL_EMBED: 1024,  # 기본 1024 (256, 512, 1024 선택 가능)
+            EmbeddingModel.CODESTRAL_EMBED: 1536,  # 실제 API 응답 차원
             EmbeddingModel.OPENAI_3_SMALL: 1536,
             EmbeddingModel.OPENAI_3_LARGE: 3072,
             EmbeddingModel.OPENAI_ADA_002: 1536,

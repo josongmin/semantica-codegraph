@@ -141,3 +141,52 @@ class IndexingStatus:
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
 
+
+# 8) 저장소 설정
+@dataclass
+class RepoConfig:
+    """저장소별 인덱싱 설정 (최소 필수)"""
+    
+    # 제외 패턴
+    exclude_patterns: List[str] = field(default_factory=lambda: [
+        "**/node_modules/**",
+        "**/__pycache__/**",
+        "**/.git/**",
+        "**/*.min.js",
+        "**/*.bundle.js",
+        "**/dist/**",
+        "**/build/**",
+        "**/.venv/**",
+        "**/.env/**",
+    ])
+    
+    # 언어 필터 (빈 리스트 = 모든 언어)
+    languages: List[str] = field(default_factory=list)
+    
+    # 테스트 파일 포함 여부
+    include_tests: bool = True
+
+
+# 9) 파일 메타데이터 (RepoScanner 출력)
+@dataclass
+class FileMetadata:
+    """파일 메타데이터 (최소)"""
+    file_path: str  # 저장소 루트 기준 상대 경로
+    abs_path: str  # 절대 경로
+    language: str  # "python" | "typescript" | "javascript" | ...
+
+
+# 10) 인덱싱 결과
+@dataclass
+class IndexingResult:
+    """인덱싱 파이프라인 실행 결과"""
+    repo_id: RepoId
+    status: str  # "completed" | "failed"
+    total_files: int = 0
+    processed_files: int = 0
+    total_nodes: int = 0
+    total_edges: int = 0
+    total_chunks: int = 0
+    duration_seconds: float = 0.0
+    error_message: Optional[str] = None
+
