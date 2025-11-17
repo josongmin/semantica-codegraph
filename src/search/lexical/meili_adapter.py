@@ -33,6 +33,15 @@ class MeiliSearchAdapter(LexicalSearchPort):
         # repo_id에서 특수문자 제거 (MeiliSearch 인덱스명 제약)
         safe_repo_id = repo_id.replace("/", "_").replace(":", "_").replace("-", "_")
         return f"{self.index_prefix}_{safe_repo_id}"
+    
+    def _sanitize_id(self, chunk_id: str) -> str:
+        """
+        Chunk ID를 MeiliSearch 호환 형식으로 변환
+        
+        MeiliSearch는 ID에 alphanumeric, -, _ 만 허용
+        콜론(:), 슬래시(/) 등을 언더스코어로 변경
+        """
+        return chunk_id.replace(":", "_").replace("/", "_").replace(".", "_")
 
     def _ensure_index(self, repo_id: RepoId) -> Any:
         """인덱스 생성 또는 가져오기"""
@@ -47,7 +56,8 @@ class MeiliSearchAdapter(LexicalSearchPort):
                 logger.info(f"Creating new index: {index_name}")
                 task = self.client.create_index(index_name, {"primaryKey": "id"})
                 # 작업 완료 대기
-                self.client.wait_for_task(task["taskUid"])
+                task_uid = task.task_uid if hasattr(task, 'task_uid') else task.uid
+                self.client.wait_for_task(task_uid)
                 index = self.client.get_index(index_name)
 
                 # 검색 설정
@@ -88,7 +98,8 @@ class MeiliSearchAdapter(LexicalSearchPort):
 
         # 작업 완료 대기
         for task in [task1, task2, task3, task4]:
-            self.client.wait_for_task(task["taskUid"])
+            task_uid = task.task_uid if hasattr(task, 'task_uid') else task.uid
+            self.client.wait_for_task(task_uid)
 
         logger.debug(f"Configured index: {index.uid}")
 
@@ -104,7 +115,8 @@ class MeiliSearchAdapter(LexicalSearchPort):
         # 문서 변환
         documents = [
             {
-                "id": chunk.id,
+                "id": self._sanitize_id(chunk.id),  # MeiliSearch 호환 ID
+                "original_id": chunk.id,  # 원본 ID 보존
                 "repo_id": chunk.repo_id,
                 "node_id": chunk.node_id,
                 "file_path": chunk.file_path,
@@ -118,14 +130,18 @@ class MeiliSearchAdapter(LexicalSearchPort):
 
         # 배치 처리
         total_indexed = 0
+        last_task = None
         for i in range(0, len(documents), self.batch_size):
             batch = documents[i : i + self.batch_size]
-            task = index.add_documents(batch)
-            # 작업 완료 대기 (선택적 - 대량 인덱싱 시 성능 고려)
-            # self.client.wait_for_task(task["taskUid"])
+            last_task = index.add_documents(batch)
             total_indexed += len(batch)
             logger.debug(f"Indexed {total_indexed}/{len(documents)} documents")
 
+        # 마지막 작업 완료 대기 (검색 전에 인덱싱이 완료되도록)
+        if last_task:
+            task_uid = last_task.task_uid if hasattr(last_task, 'task_uid') else last_task.uid
+            self.client.wait_for_task(task_uid)
+        
         logger.info(f"Indexed {len(documents)} chunks for repo: {repo_id}")
 
     def search(
@@ -179,10 +195,13 @@ class MeiliSearchAdapter(LexicalSearchPort):
         chunk_results = []
         for hit in results.get("hits", []):
             try:
+                # original_id가 있으면 사용, 없으면 sanitized ID 사용
+                chunk_id = hit.get("original_id", hit["id"])
+                
                 chunk_results.append(
                     ChunkResult(
                         repo_id=repo_id,
-                        chunk_id=hit["id"],
+                        chunk_id=chunk_id,
                         score=hit.get("_rankingScore", 0.0),
                         source="meilisearch",
                         file_path=hit["file_path"],
@@ -201,7 +220,8 @@ class MeiliSearchAdapter(LexicalSearchPort):
         index_name = self._get_index_name(repo_id)
         try:
             task = self.client.delete_index(index_name)
-            self.client.wait_for_task(task["taskUid"])
+            task_uid = task.task_uid if hasattr(task, 'task_uid') else task.uid
+            self.client.wait_for_task(task_uid)
             logger.info(f"Deleted index: {index_name}")
         except MeilisearchApiError as e:
             if e.code == "index_not_found":

@@ -14,21 +14,26 @@ SourceGraph의 Cody처럼 빠르게 코드베이스를 지식화하여 읽을 �
 ## 프로젝트 구조
 
 ```
-src/
-├── core/          # 핵심 모델, 포트, 설정, bootstrap (DI)
-├── indexer/       # 저장소 스캔 및 인덱싱 파이프라인
-├── parser/        # 코드 파서 (Python, TypeScript)
-├── graph/         # IR 빌더, PostgreSQL 저장소, 그래프 확장
-├── chunking/      # 코드 청킹 및 저장
-├── embedding/     # 임베딩 서비스 및 pgvector 저장소
-├── search/        # 검색 도메인
+src/                    # 라이브러리 코드
+├── core/              # 핵심 모델, 포트, 설정, bootstrap (DI)
+├── indexer/           # 저장소 스캔 및 인덱싱 파이프라인
+├── parser/             # 코드 파서 (Python, TypeScript)
+├── graph/             # IR 빌더, PostgreSQL 저장소, 그래프 확장
+├── chunking/          # 코드 청킹 및 저장
+├── embedding/         # 임베딩 서비스 및 pgvector 저장소
+├── search/            # 검색 도메인
 │   ├── ports/         # 검색 포트 (Lexical, Semantic, Graph, Ranker, ContextPacker)
-│   ├── lexical/       # 키워드 검색 어댑터 (MeiliSearch, Zoekt)
-│   ├── semantic/      # 의미론적 검색 어댑터
+│   ├── lexical/      # 키워드 검색 어댑터 (MeiliSearch, Zoekt)
+│   ├── semantic/     # 의미론적 검색 어댑터
 │   ├── graph/         # 그래프 검색 어댑터
 │   ├── retriever/     # 하이브리드 리트리버
 │   └── ranking/       # 랭커 구현
-└── mcp_server/    # MCP 서버 구현
+└── context/           # 컨텍스트 패킹
+
+apps/                   # 실행 가능한 애플리케이션들
+├── cli/               # CLI 도구
+├── mcp_server/        # MCP 서버
+└── api/               # HTTP API 서버
 ```
 
 ## 주요 기술 스택

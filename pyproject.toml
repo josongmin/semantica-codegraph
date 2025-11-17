@@ -19,6 +19,7 @@ dependencies = [
     "protobuf>=4.21.0",  # SCIP uses protobuf
     "mistralai>=1.0.0",  # Mistral Codestral Embed
     "python-dotenv>=1.0.0",  # .env 파일 로드
+    "click>=8.0.0",  # CLI 프레임워크
 ]
 
 [project.optional-dependencies]
@@ -37,7 +38,10 @@ embedding = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+
+[project.scripts]
+semantica = "apps.cli.main:main"
 
 [tool.black]
 line-length = 100
