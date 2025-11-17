@@ -1,0 +1,24 @@
+# Semantica Codegraph 프로젝트
+
+프로젝트 컨텍스트는 `.ai/PROJECT.md`를 참조하세요.
+
+## 프로젝트 개요
+SourceGraph의 Cody처럼 빠르게 코드베이스를 지식화하여 읽을 수 있게 하는 시스템입니다.
+코드베이스를 빠르게 인덱싱하고, 코드 그래프를 구축하여 의미론적 검색과 컨텍스트 이해를 제공합니다.
+
+## 주요 모듈
+- core: 핵심 모델 및 설정
+- indexer: 저장소 인덱싱
+- parser: 코드 파싱
+- graph: 그래프 IR 및 저장소
+- chunking: 코드 청킹
+- embedding: 임베딩 처리
+- search: 검색 및 랭킹
+- context: 컨텍스트 관리
+- mcp_server: MCP 서버
+
+## 개발 가이드
+- 타입 힌팅 필수
+- 포트/어댑터 패턴 사용
+- 모듈 간 의존성 최소화
+
