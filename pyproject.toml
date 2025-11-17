@@ -20,6 +20,11 @@ dependencies = [
     "mistralai>=1.0.0",  # Mistral Codestral Embed
     "python-dotenv>=1.0.0",  # .env 파일 로드
     "click>=8.0.0",  # CLI 프레임워크
+    "rich>=13.0.0",  # TUI 라이브러리
+    "prompt-toolkit>=3.0.0",  # 대화형 입력
+    "fastapi>=0.100.0",  # HTTP API 프레임워크
+    "uvicorn[standard]>=0.23.0",  # ASGI 서버
+    "pydantic>=2.0.0",  # 데이터 검증
 ]
 
 [project.optional-dependencies]
@@ -42,6 +47,7 @@ where = ["src", "."]
 
 [project.scripts]
 semantica = "apps.cli.main:main"
+semantica-api = "apps.api.main:main"
 
 [tool.black]
 line-length = 100

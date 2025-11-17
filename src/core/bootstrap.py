@@ -29,6 +29,11 @@ class Bootstrap:
         self._chunker = None
         self._scanner = None
         self._pipeline = None
+        self._semantic_search = None
+        self._graph_search = None
+        self._hybrid_retriever = None
+        self._ranker = None
+        self._context_packer = None
     
     def _build_connection_string(self) -> str:
         """PostgreSQL 연결 문자열 생성"""
@@ -154,6 +159,58 @@ class Bootstrap:
                 scanner=self.scanner
             )
         return self._pipeline
+    
+    @property
+    def semantic_search(self):
+        """의미론적 검색"""
+        if self._semantic_search is None:
+            from ..search.semantic.pgvector_adapter import PgVectorSemanticSearch
+            self._semantic_search = PgVectorSemanticSearch(
+                embedding_service=self.embedding_service,
+                embedding_store=self.embedding_store
+            )
+        return self._semantic_search
+    
+    @property
+    def graph_search(self):
+        """그래프 검색"""
+        if self._graph_search is None:
+            from ..search.graph.postgres_graph_adapter import PostgresGraphSearch
+            self._graph_search = PostgresGraphSearch(
+                graph_store=self.graph_store
+            )
+        return self._graph_search
+    
+    @property
+    def hybrid_retriever(self):
+        """하이브리드 리트리버"""
+        if self._hybrid_retriever is None:
+            from ..search.retriever.hybrid_retriever import HybridRetriever
+            self._hybrid_retriever = HybridRetriever(
+                lexical_search=self.lexical_search,
+                semantic_search=self.semantic_search,
+                graph_search=self.graph_search
+            )
+        return self._hybrid_retriever
+    
+    @property
+    def ranker(self):
+        """랭커"""
+        if self._ranker is None:
+            from ..search.ranking.ranker import Ranker
+            self._ranker = Ranker()
+        return self._ranker
+    
+    @property
+    def context_packer(self):
+        """컨텍스트 패커"""
+        if self._context_packer is None:
+            from ..context.packer import ContextPacker
+            self._context_packer = ContextPacker(
+                chunk_store=self.chunk_store,
+                graph_store=self.graph_store
+            )
+        return self._context_packer
 
 
 def create_bootstrap(config: Optional[Config] = None) -> Bootstrap:

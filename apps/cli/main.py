@@ -14,8 +14,14 @@ from src.core.bootstrap import create_bootstrap
     type=click.Path(exists=True),
     help="설정 파일 경로 (.env 파일)",
 )
+@click.option(
+    "--interactive",
+    "-i",
+    is_flag=True,
+    help="대화형 모드 실행",
+)
 @click.pass_context
-def cli(ctx: click.Context, config: Optional[str]) -> None:
+def cli(ctx: click.Context, config: Optional[str], interactive: bool) -> None:
     """Semantica Codegraph CLI"""
     ctx.ensure_object(dict)
     
@@ -31,6 +37,12 @@ def cli(ctx: click.Context, config: Optional[str]) -> None:
     except Exception as e:
         click.echo(f"설정 로드 실패: {e}", err=True)
         sys.exit(1)
+    
+    # 대화형 모드
+    if interactive:
+        from .interactive import run_interactive
+        run_interactive()
+        sys.exit(0)
 
 
 @cli.command()
@@ -74,7 +86,24 @@ def search(ctx: click.Context, query: str, repo_id: str, limit: int) -> None:
 
 def main() -> None:
     """CLI 진입점"""
-    cli()
+    # -i 또는 --interactive 옵션이 있거나 인자가 없으면 대화형 모드로 실행
+    if len(sys.argv) == 1 or "-i" in sys.argv or "--interactive" in sys.argv:
+        # Bootstrap 초기화
+        try:
+            bootstrap = create_bootstrap()
+        except Exception as e:
+            from rich.console import Console
+            console = Console()
+            console.print(f"[bold red]초기화 실패[/bold red]")
+            console.print(f"[red]{str(e)}[/red]")
+            console.print("\n환경변수를 확인해주세요.")
+            sys.exit(1)
+        
+        # 대화형 모드 실행
+        from .interactive import run_interactive
+        run_interactive()
+    else:
+        cli()
 
 
 if __name__ == "__main__":
