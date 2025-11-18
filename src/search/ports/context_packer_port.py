@@ -1,6 +1,6 @@
 """Context Packer Port (LLM 컨텍스트 패킹)"""
 
-from typing import List, Protocol
+from typing import Protocol
 
 from ...core.models import Candidate, LocationContext, PackedContext
 
@@ -10,7 +10,7 @@ class ContextPackerPort(Protocol):
 
     def pack(
         self,
-        candidates: List[Candidate],
+        candidates: list[Candidate],
         max_tokens: int,
         location_ctx: LocationContext,
     ) -> PackedContext:

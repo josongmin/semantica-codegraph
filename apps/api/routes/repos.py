@@ -1,11 +1,9 @@
 """저장소 관리 API"""
 
-from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
-from src.core.models import RepoId, RepoMetadata, IndexingResult
 from src.core.bootstrap import create_bootstrap
 
 router = APIRouter()
@@ -15,8 +13,8 @@ bootstrap = create_bootstrap()
 class IndexRequest(BaseModel):
     """인덱싱 요청"""
     repo_path: str
-    repo_id: Optional[str] = None
-    name: Optional[str] = None
+    repo_id: str | None = None
+    name: str | None = None
 
 
 class IndexResponse(BaseModel):
@@ -33,14 +31,14 @@ class RepoResponse(BaseModel):
     repo_id: str
     name: str
     root_path: str
-    git_url: Optional[str] = None
+    git_url: str | None = None
     default_branch: str
-    languages: List[str]
+    languages: list[str]
     total_files: int
     total_nodes: int
     total_edges: int
     indexing_status: str
-    indexed_at: Optional[str] = None
+    indexed_at: str | None = None
 
 
 @router.post("/", response_model=IndexResponse)
@@ -50,7 +48,7 @@ async def index_repository(
 ):
     """
     저장소 인덱싱 시작
-    
+
     백그라운드로 실행되며 즉시 응답 반환
     """
     try:
@@ -59,7 +57,7 @@ async def index_repository(
             repo_id=request.repo_id,
             name=request.name,
         )
-        
+
         return IndexResponse(
             repo_id=result.repo_id,
             status="completed",
@@ -71,7 +69,7 @@ async def index_repository(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/", response_model=List[RepoResponse])
+@router.get("/", response_model=list[RepoResponse])
 async def list_repositories():
     """저장소 목록 조회"""
     try:
@@ -103,7 +101,7 @@ async def get_repository(repo_id: str):
         repo = bootstrap.repo_store.get(repo_id)
         if not repo:
             raise HTTPException(status_code=404, detail="Repository not found")
-        
+
         return RepoResponse(
             repo_id=repo.repo_id,
             name=repo.name,
@@ -141,7 +139,7 @@ async def get_indexing_status(repo_id: str):
         repo = bootstrap.repo_store.get(repo_id)
         if not repo:
             raise HTTPException(status_code=404, detail="Repository not found")
-        
+
         return {
             "repo_id": repo_id,
             "status": repo.indexing_status,

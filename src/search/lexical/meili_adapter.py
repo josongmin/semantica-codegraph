@@ -1,9 +1,9 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from meilisearch import Client
 
-from ...core.models import CodeChunk, ChunkResult, RepoId
+from ...core.models import ChunkResult, CodeChunk, RepoId
 from ..ports.lexical_search_port import LexicalSearchPort
 
 try:
@@ -33,11 +33,11 @@ class MeiliSearchAdapter(LexicalSearchPort):
         # repo_id에서 특수문자 제거 (MeiliSearch 인덱스명 제약)
         safe_repo_id = repo_id.replace("/", "_").replace(":", "_").replace("-", "_")
         return f"{self.index_prefix}_{safe_repo_id}"
-    
+
     def _sanitize_id(self, chunk_id: str) -> str:
         """
         Chunk ID를 MeiliSearch 호환 형식으로 변환
-        
+
         MeiliSearch는 ID에 alphanumeric, -, _ 만 허용
         콜론(:), 슬래시(/) 등을 언더스코어로 변경
         """
@@ -103,7 +103,7 @@ class MeiliSearchAdapter(LexicalSearchPort):
 
         logger.debug(f"Configured index: {index.uid}")
 
-    def index_chunks(self, chunks: List[CodeChunk]) -> None:
+    def index_chunks(self, chunks: list[CodeChunk]) -> None:
         """청크 인덱싱"""
         if not chunks:
             logger.warning("No chunks to index")
@@ -141,7 +141,7 @@ class MeiliSearchAdapter(LexicalSearchPort):
         if last_task:
             task_uid = last_task.task_uid if hasattr(last_task, 'task_uid') else last_task.uid
             self.client.wait_for_task(task_uid)
-        
+
         logger.info(f"Indexed {len(documents)} chunks for repo: {repo_id}")
 
     def search(
@@ -149,8 +149,8 @@ class MeiliSearchAdapter(LexicalSearchPort):
         repo_id: RepoId,
         query: str,
         k: int,
-        filters: Optional[Dict] = None,
-    ) -> List[ChunkResult]:
+        filters: dict | None = None,
+    ) -> list[ChunkResult]:
         """검색 실행"""
         index_name = self._get_index_name(repo_id)
 
@@ -197,7 +197,7 @@ class MeiliSearchAdapter(LexicalSearchPort):
             try:
                 # original_id가 있으면 사용, 없으면 sanitized ID 사용
                 chunk_id = hit.get("original_id", hit["id"])
-                
+
                 chunk_results.append(
                     ChunkResult(
                         repo_id=repo_id,

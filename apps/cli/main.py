@@ -1,9 +1,14 @@
 """CLI 진입점"""
 
 import sys
-from typing import Optional
+from pathlib import Path
 
 import click
+
+# 프로젝트 루트를 sys.path에 추가
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from src.core.bootstrap import create_bootstrap
 
@@ -21,15 +26,15 @@ from src.core.bootstrap import create_bootstrap
     help="대화형 모드 실행",
 )
 @click.pass_context
-def cli(ctx: click.Context, config: Optional[str], interactive: bool) -> None:
+def cli(ctx: click.Context, config: str | None, interactive: bool) -> None:
     """Semantica Codegraph CLI"""
     ctx.ensure_object(dict)
-    
+
     # 설정 로드
     if config:
         from dotenv import load_dotenv
         load_dotenv(config)
-    
+
     # Bootstrap 인스턴스 생성
     try:
         bootstrap = create_bootstrap()
@@ -37,7 +42,7 @@ def cli(ctx: click.Context, config: Optional[str], interactive: bool) -> None:
     except Exception as e:
         click.echo(f"설정 로드 실패: {e}", err=True)
         sys.exit(1)
-    
+
     # 대화형 모드
     if interactive:
         from .interactive import run_interactive
@@ -50,10 +55,10 @@ def cli(ctx: click.Context, config: Optional[str], interactive: bool) -> None:
 @click.option("--repo-id", help="저장소 ID (기본값: 자동 생성)")
 @click.option("--name", help="저장소 이름 (기본값: 디렉토리 이름)")
 @click.pass_context
-def index(ctx: click.Context, repo_path: str, repo_id: Optional[str], name: Optional[str]) -> None:
+def index(ctx: click.Context, repo_path: str, repo_id: str | None, name: str | None) -> None:
     """저장소 인덱싱"""
     bootstrap = ctx.obj["bootstrap"]
-    
+
     click.echo(f"인덱싱 시작: {repo_path}")
     try:
         result = bootstrap.pipeline.index_repository(
@@ -78,8 +83,8 @@ def index(ctx: click.Context, repo_path: str, repo_id: Optional[str], name: Opti
 @click.pass_context
 def search(ctx: click.Context, query: str, repo_id: str, limit: int) -> None:
     """코드 검색"""
-    bootstrap = ctx.obj["bootstrap"]
-    
+    ctx.obj["bootstrap"]
+
     click.echo(f"검색 중: {query}")
     # TODO: 검색 기능 구현
     click.echo("검색 기능은 아직 구현되지 않았습니다.")
@@ -91,15 +96,15 @@ def main() -> None:
     if len(sys.argv) == 1 or "-i" in sys.argv or "--interactive" in sys.argv:
         # Bootstrap 초기화
         try:
-            bootstrap = create_bootstrap()
+            create_bootstrap()
         except Exception as e:
             from rich.console import Console
             console = Console()
-            console.print(f"[bold red]초기화 실패[/bold red]")
+            console.print("[bold red]초기화 실패[/bold red]")
             console.print(f"[red]{str(e)}[/red]")
             console.print("\n환경변수를 확인해주세요.")
             sys.exit(1)
-        
+
         # 대화형 모드 실행
         from .interactive import run_interactive
         run_interactive()

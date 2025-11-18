@@ -1,7 +1,6 @@
 """pgvector 기반 임베딩 저장소"""
 
 import logging
-from typing import Dict, List, Optional
 
 import psycopg2
 from psycopg2 import pool
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 class PgVectorStore(EmbeddingStorePort):
     """
     pgvector 기반 임베딩 저장소
-    
+
     기능:
     - 임베딩 벡터 저장
     - 코사인 유사도 검색
@@ -29,7 +28,7 @@ class PgVectorStore(EmbeddingStorePort):
         embedding_dimension: int = 384,
         model_name: str = "default",
         pool_size: int = 10,
-        pool_max: int = 20
+        pool_max: int = 20,
     ):
         """
         Args:
@@ -42,25 +41,21 @@ class PgVectorStore(EmbeddingStorePort):
         self.connection_string = connection_string
         self.embedding_dimension = embedding_dimension
         self.model_name = model_name
-        
+
         # 커넥션 풀 생성
-        self._pool = pool.SimpleConnectionPool(
-            pool_size,
-            pool_max,
-            connection_string
-        )
+        self._pool = pool.SimpleConnectionPool(pool_size, pool_max, connection_string)
         logger.info(f"Created connection pool: min={pool_size}, max={pool_max}")
-        
+
         self._ensure_tables()
 
     def _get_connection(self):
         """DB 연결 풀에서 가져오기"""
         return self._pool.getconn()
-    
+
     def _put_connection(self, conn):
         """DB 연결 풀에 반환"""
         self._pool.putconn(conn)
-    
+
     def close(self):
         """커넥션 풀 종료"""
         if self._pool:
@@ -78,21 +73,21 @@ class PgVectorStore(EmbeddingStorePort):
                 # 기존 테이블 존재 여부 확인
                 cur.execute("""
                     SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
+                        SELECT FROM information_schema.tables
                         WHERE table_name = 'embeddings'
                     )
                 """)
                 table_exists = cur.fetchone()[0]
-                
+
                 # 테이블이 존재하면 차원 확인
                 if table_exists:
                     # information_schema에서 컬럼 정의 확인
                     cur.execute("""
-                        SELECT 
+                        SELECT
                             udt_name,
                             character_maximum_length
                         FROM information_schema.columns
-                        WHERE table_name = 'embeddings' 
+                        WHERE table_name = 'embeddings'
                         AND column_name = 'embedding'
                     """)
                     try:
@@ -101,7 +96,7 @@ class PgVectorStore(EmbeddingStorePort):
                             # pgvector는 udt_name이 'vector'이고 차원은 별도로 저장되지 않음
                             # 대신 pg_attribute에서 확인
                             cur.execute("""
-                                SELECT 
+                                SELECT
                                     format_type(atttypid, atttypmod) as type_name
                                 FROM pg_attribute
                                 WHERE attrelid = 'embeddings'::regclass
@@ -111,7 +106,8 @@ class PgVectorStore(EmbeddingStorePort):
                             if type_result and type_result[0]:
                                 # vector(384) 형식에서 숫자 추출
                                 import re
-                                match = re.search(r'vector\((\d+)\)', type_result[0])
+
+                                match = re.search(r"vector\((\d+)\)", type_result[0])
                                 if match:
                                     existing_dim = int(match.group(1))
                                     if existing_dim != self.embedding_dimension:
@@ -135,16 +131,26 @@ class PgVectorStore(EmbeddingStorePort):
                             chunk_id TEXT NOT NULL,
                             model TEXT NOT NULL,
                             embedding vector({self.embedding_dimension}),
+                            content_hash TEXT,
                             created_at TIMESTAMP DEFAULT NOW(),
                             PRIMARY KEY (repo_id, chunk_id, model)
                         )
                     """)
+                else:
+                    # content_hash 컬럼 추가 (기존 테이블에)
+                    try:
+                        cur.execute("""
+                            ALTER TABLE embeddings
+                            ADD COLUMN IF NOT EXISTS content_hash TEXT
+                        """)
+                    except Exception as e:
+                        logger.debug(f"content_hash column may already exist: {e}")
 
                 # HNSW 인덱스 (빠른 근사 검색)
                 # PostgreSQL 16+ 필요
                 try:
                     cur.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw 
+                        CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw
                         ON embeddings USING hnsw (embedding vector_cosine_ops)
                         WITH (m = 16, ef_construction = 64)
                     """)
@@ -152,14 +158,19 @@ class PgVectorStore(EmbeddingStorePort):
                     # HNSW 지원 안 되면 IVFFlat 사용
                     logger.warning("HNSW not supported, using IVFFlat")
                     cur.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_embeddings_ivfflat 
+                        CREATE INDEX IF NOT EXISTS idx_embeddings_ivfflat
                         ON embeddings USING ivfflat (embedding vector_cosine_ops)
                         WITH (lists = 100)
                     """)
 
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_embeddings_model 
+                    CREATE INDEX IF NOT EXISTS idx_embeddings_model
                     ON embeddings(repo_id, model)
+                """)
+
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_embeddings_content_hash
+                    ON embeddings(content_hash)
                 """)
 
                 conn.commit()
@@ -168,10 +179,10 @@ class PgVectorStore(EmbeddingStorePort):
 
         logger.info("Embedding tables ensured")
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
         """
         텍스트를 벡터로 변환
-        
+
         Note: 실제 임베딩은 EmbeddingService에서 수행
               여기서는 placeholder
         """
@@ -181,8 +192,9 @@ class PgVectorStore(EmbeddingStorePort):
     def save_embeddings(
         self,
         repo_id: RepoId,
-        chunk_ids: List[str],
-        vectors: List[List[float]],
+        chunk_ids: list[str],
+        vectors: list[list[float]],
+        content_hashes: list[str] | None = None,
     ) -> None:
         """임베딩 벡터 저장"""
         if not chunk_ids or not vectors:
@@ -195,27 +207,47 @@ class PgVectorStore(EmbeddingStorePort):
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                embedding_data = [
-                    (
-                        repo_id,
-                        chunk_id,
-                        self.model_name,
-                        vector
-                    )
-                    for chunk_id, vector in zip(chunk_ids, vectors)
-                ]
+                if content_hashes and len(content_hashes) == len(chunk_ids):
+                    # content_hash 포함
+                    embedding_data: list[tuple[str, str, str, list[float], str]] = [
+                        (repo_id, chunk_id, self.model_name, vector, content_hash)
+                        for chunk_id, vector, content_hash in zip(
+                            chunk_ids, vectors, content_hashes, strict=False
+                        )
+                    ]
 
-                execute_batch(
-                    cur,
-                    """
-                    INSERT INTO embeddings (repo_id, chunk_id, model, embedding)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (repo_id, chunk_id, model) DO UPDATE SET
-                        embedding = EXCLUDED.embedding,
-                        created_at = NOW()
-                    """,
-                    embedding_data
-                )
+                    execute_batch(
+                        cur,
+                        """
+                        INSERT INTO embeddings (repo_id, chunk_id, model, embedding, content_hash)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (repo_id, chunk_id, model) DO UPDATE SET
+                            embedding = EXCLUDED.embedding,
+                            content_hash = EXCLUDED.content_hash,
+                            created_at = NOW()
+                        """,
+                        embedding_data,
+                        page_size=500,
+                    )
+                else:
+                    # 기존 방식 (content_hash 없음)
+                    embedding_data_simple: list[tuple[str, str, str, list[float]]] = [
+                        (repo_id, chunk_id, self.model_name, vector)
+                        for chunk_id, vector in zip(chunk_ids, vectors, strict=False)
+                    ]
+
+                    execute_batch(
+                        cur,
+                        """
+                        INSERT INTO embeddings (repo_id, chunk_id, model, embedding)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (repo_id, chunk_id, model) DO UPDATE SET
+                            embedding = EXCLUDED.embedding,
+                            created_at = NOW()
+                        """,
+                        embedding_data_simple,
+                        page_size=500,
+                    )
 
                 conn.commit()
         finally:
@@ -223,22 +255,71 @@ class PgVectorStore(EmbeddingStorePort):
 
         logger.info(f"Saved {len(chunk_ids)} embeddings for {repo_id}")
 
+    def get_embedding_by_content_hash(self, content_hash: str, model: str) -> list[float] | None:
+        """content_hash로 기존 임베딩 조회"""
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT embedding
+                    FROM embeddings
+                    WHERE content_hash = %s AND model = %s
+                    LIMIT 1
+                    """,
+                    (content_hash, model),
+                )
+                row = cur.fetchone()
+                if row:
+                    return list(row[0])
+        finally:
+            self._put_connection(conn)
+
+        return None
+
+    def get_embeddings_by_content_hashes(
+        self, content_hashes: list[str], model: str
+    ) -> dict[str, list[float]]:
+        """여러 content_hash로 임베딩 조회 (배치)"""
+        if not content_hashes:
+            return {}
+
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT content_hash, embedding
+                    FROM embeddings
+                    WHERE content_hash = ANY(%s) AND model = %s
+                    """,
+                    (content_hashes, model),
+                )
+
+                result = {}
+                for row in cur.fetchall():
+                    result[row[0]] = row[1]
+
+                return result
+        finally:
+            self._put_connection(conn)
+
     def search_by_vector(
         self,
         repo_id: RepoId,
-        vector: List[float],
+        vector: list[float],
         k: int,
-        filters: Optional[Dict] = None,
-    ) -> List[ChunkResult]:
+        filters: dict | None = None,
+    ) -> list[ChunkResult]:
         """
         벡터 유사도 검색
-        
+
         Args:
             repo_id: 저장소 ID
             vector: 쿼리 벡터
             k: 반환할 결과 수
             filters: 필터 (language, file_path 등)
-        
+
         Returns:
             ChunkResult 리스트 (코사인 유사도 기준)
         """
@@ -247,7 +328,7 @@ class PgVectorStore(EmbeddingStorePort):
             with conn.cursor() as cur:
                 # 기본 쿼리
                 query = """
-                    SELECT 
+                    SELECT
                         e.chunk_id,
                         1 - (e.embedding <=> %s::vector) as score,
                         c.file_path,
@@ -273,7 +354,8 @@ class PgVectorStore(EmbeddingStorePort):
 
                 # 정렬 및 제한
                 query += " ORDER BY e.embedding <=> %s::vector LIMIT %s"
-                params.extend([vector, k])
+                params.append(vector)
+                params.append(k)
 
                 cur.execute(query, params)
 
@@ -286,7 +368,7 @@ class PgVectorStore(EmbeddingStorePort):
                             score=float(row[1]),
                             source="embedding",
                             file_path=row[2],
-                            span=(row[3], row[4], row[5], row[6])
+                            span=(row[3], row[4], row[5], row[6]),
                         )
                     )
         finally:
@@ -300,14 +382,10 @@ class PgVectorStore(EmbeddingStorePort):
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM embeddings WHERE repo_id = %s",
-                    (repo_id,)
-                )
+                cur.execute("DELETE FROM embeddings WHERE repo_id = %s", (repo_id,))
                 deleted = cur.rowcount
                 conn.commit()
         finally:
             self._put_connection(conn)
 
         logger.info(f"Deleted {deleted} embeddings for repo: {repo_id}")
-

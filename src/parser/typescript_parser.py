@@ -1,13 +1,12 @@
 """TypeScript/JavaScript용 Tree-sitter 파서"""
 
 import logging
-from typing import List
 
-from tree_sitter import Language, Node
 import tree_sitter_typescript
+from tree_sitter import Language, Node
 
-from .base import BaseTreeSitterParser
 from ..core.models import RawRelation, RawSymbol
+from .base import BaseTreeSitterParser
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 class TypeScriptTreeSitterParser(BaseTreeSitterParser):
     """
     TypeScript/JavaScript용 Tree-sitter 파서
-    
+
     추출하는 심볼:
     - File
     - Class
@@ -41,7 +40,7 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
         root: Node,
         source: bytes,
         file_meta: dict
-    ) -> List[RawSymbol]:
+    ) -> list[RawSymbol]:
         """TypeScript 심볼 추출"""
         symbols = []
 
@@ -72,7 +71,7 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
         node: Node,
         source: bytes,
         file_meta: dict,
-        symbols: List[RawSymbol],
+        symbols: list[RawSymbol],
         parent_class: str | None
     ):
         """재귀적으로 노드 순회하며 심볼 추출"""
@@ -234,7 +233,7 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
                     parent_class
                 )
 
-    def _extract_parameters(self, node: Node, source: bytes) -> List[dict]:
+    def _extract_parameters(self, node: Node, source: bytes) -> list[dict]:
         """파라미터 추출"""
         params_node = node.child_by_field_name("parameters")
         if not params_node:
@@ -260,10 +259,7 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
 
     def _has_modifier(self, node: Node, modifier: str) -> bool:
         """특정 modifier 존재 여부"""
-        for child in node.children:
-            if child.type == modifier:
-                return True
-        return False
+        return any(child.type == modifier for child in node.children)
 
     def _has_export_modifier(self, node: Node) -> bool:
         """export modifier 존재 여부"""
@@ -283,14 +279,14 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
     def _extract_extends(self, class_node: Node, source: bytes) -> str | None:
         """
         클래스 extends 추출
-        
+
         TypeScript AST:
         class_heritage:
           extends_clause: "extends BaseRepository<User>"
         """
         # class_heritage 찾기
         heritage = self._find_child_by_type(class_node, "class_heritage")
-        
+
         if heritage:
             # extends_clause 찾기
             extends_clause = self._find_child_by_type(heritage, "extends_clause")
@@ -302,16 +298,16 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
                 if "<" in clause_text:
                     clause_text = clause_text.split("<")[0]
                 return clause_text
-        
+
         return None
 
-    def _extract_implements(self, class_node: Node, source: bytes) -> List[str]:
+    def _extract_implements(self, class_node: Node, source: bytes) -> list[str]:
         """클래스 implements 추출"""
         implements = []
-        
+
         # class_heritage 찾기
         heritage = self._find_child_by_type(class_node, "class_heritage")
-        
+
         if heritage:
             # implements_clause 찾기
             implements_clause = self._find_child_by_type(heritage, "implements_clause")
@@ -324,10 +320,10 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
                     interface = interface.strip()
                     if interface:
                         implements.append(interface)
-        
+
         return implements
 
-    def _extract_interface_extends(self, interface_node: Node, source: bytes) -> List[str]:
+    def _extract_interface_extends(self, interface_node: Node, source: bytes) -> list[str]:
         """인터페이스 extends 추출"""
         extends = []
         heritage = interface_node.child_by_field_name("heritage")
@@ -342,11 +338,11 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
         root: Node,
         source: bytes,
         file_meta: dict,
-        symbols: List[RawSymbol]
-    ) -> List[RawRelation]:
+        symbols: list[RawSymbol]
+    ) -> list[RawRelation]:
         """
         TypeScript 관계 추출
-        
+
         Tree-sitter 레벨:
         - Class → Method (defines)
         - Class → Interface (implements)

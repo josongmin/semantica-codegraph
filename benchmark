@@ -5,30 +5,30 @@ cd "$(dirname "$0")"
 
 # 기본 실행
 if [ $# -eq 0 ]; then
-    python3 benchmarks/run.py
+    python3 apps/benchmarks/run.py
     exit $?
 fi
 
 # 인자 전달
 case "$1" in
     quick|fast)
-        echo "🚀 빠른 벤치마크 (5개 쿼리)"
-        python3 benchmarks/quickstart.py
+        echo "빠른 벤치마크 (5개 쿼리)"
+        python3 apps/benchmarks/quickstart.py
         ;;
     eval|evaluate)
-        echo "📊 정확도 평가"
-        python3 benchmarks/run.py --evaluate
+        echo "정확도 평가"
+        python3 apps/benchmarks/run.py --evaluate
         ;;
     cody)
-        echo "🤖 Cody 비교"
-        python3 benchmarks/run.py --with-cody
+        echo "Cody 비교"
+        python3 apps/benchmarks/run.py --with-cody
         ;;
     full)
-        echo "📈 전체 벤치마크"
-        python3 -m benchmarks.compare \
+        echo "전체 벤치마크"
+        python3 -m apps.benchmarks.compare \
             --repo-id semantica-codegraph \
-            --queries benchmarks/datasets/semantica_queries.txt \
-            --ground-truth benchmarks/datasets/semantica_ground_truth.json \
+            --queries apps/benchmarks/datasets/semantica_queries.txt \
+            --ground-truth apps/benchmarks/datasets/semantica_ground_truth.json \
             --k 5
         ;;
     help|--help|-h)
@@ -43,7 +43,7 @@ case "$1" in
         echo "  help       이 도움말"
         ;;
     *)
-        python3 benchmarks/run.py "$@"
+        python3 apps/benchmarks/run.py "$@"
         ;;
 esac
 

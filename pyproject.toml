@@ -27,6 +27,7 @@ dependencies = [
     "pydantic>=2.0.0",  # 데이터 검증
     "tiktoken>=0.5.0",  # 정확한 토큰 카운팅
     "rapidfuzz>=3.0.0",  # 퍼지 문자열 매칭
+    "mcp>=1.0.0",  # Model Context Protocol SDK
 ]
 
 [project.optional-dependencies]
@@ -54,6 +55,7 @@ where = ["src", "."]
 [project.scripts]
 semantica = "apps.cli.main:main"
 semantica-api = "apps.api.main:main"
+semantica-mcp = "apps.mcp_server.server:main"
 
 [tool.black]
 line-length = 100

@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from ..core.models import RawRelation, RawSymbol
 
@@ -14,12 +13,12 @@ logger = logging.getLogger(__name__)
 class ParseCache:
     """
     Tree-sitter 파싱 결과를 JSON 파일로 캐시하는 저장소
-    
+
     캐시 구조:
     .semantica-cache/
       {repo_id}/
         {file_hash}.json
-    
+
     JSON 형식:
     {
         "file_path": "src/example.py",
@@ -29,17 +28,17 @@ class ParseCache:
     }
     """
 
-    def __init__(self, cache_root: Optional[Path] = None):
+    def __init__(self, cache_root: Path | None = None):
         """
         Args:
             cache_root: 캐시 루트 디렉토리 (None이면 .semantica-cache 사용)
         """
         if cache_root is None:
             cache_root = Path.cwd() / ".semantica-cache"
-        
+
         self.cache_root = Path(cache_root)
         self.cache_root.mkdir(parents=True, exist_ok=True)
-        
+
         logger.info(f"Parse cache initialized at {self.cache_root}")
 
     def _compute_file_hash(self, file_path: Path) -> str:
@@ -62,16 +61,16 @@ class ParseCache:
         self,
         repo_id: str,
         file_path: Path,
-        current_hash: Optional[str] = None
-    ) -> Optional[Tuple[List[RawSymbol], List[RawRelation]]]:
+        current_hash: str | None = None
+    ) -> tuple[list[RawSymbol], list[RawRelation]] | None:
         """
         캐시에서 파싱 결과 조회
-        
+
         Args:
             repo_id: 저장소 ID
             file_path: 파일 경로
             current_hash: 현재 파일 해시 (None이면 계산)
-        
+
         Returns:
             (symbols, relations) 튜플 또는 None (캐시 미스)
         """
@@ -85,15 +84,15 @@ class ParseCache:
             return None
 
         cache_path = self._get_cache_path(repo_id, current_hash)
-        
+
         if not cache_path.exists():
             logger.debug(f"Cache miss: {file_path}")
             return None
 
         try:
-            with open(cache_path, "r", encoding="utf-8") as f:
+            with open(cache_path, encoding="utf-8") as f:
                 data = json.load(f)
-            
+
             # 파일 경로 확인 (같은 해시지만 다른 파일일 수 있음)
             if data.get("file_path") != str(file_path):
                 logger.debug(f"Cache path mismatch: {data.get('file_path')} != {file_path}")
@@ -119,13 +118,13 @@ class ParseCache:
         self,
         repo_id: str,
         file_path: Path,
-        symbols: List[RawSymbol],
-        relations: List[RawRelation],
-        file_hash: Optional[str] = None
+        symbols: list[RawSymbol],
+        relations: list[RawRelation],
+        file_hash: str | None = None
     ) -> None:
         """
         파싱 결과를 캐시에 저장
-        
+
         Args:
             repo_id: 저장소 ID
             file_path: 파일 경로

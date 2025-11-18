@@ -4,9 +4,8 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
-from ..core.models import RawRelation, RawSymbol, RepoId, Span
+from ..core.models import RawRelation, RawSymbol, Span
 from ..core.ports import ParserPort
 
 logger = logging.getLogger(__name__)
@@ -15,17 +14,17 @@ logger = logging.getLogger(__name__)
 class ScipParser(ParserPort):
     """
     SCIP (SCIP Code Intelligence Protocol) 기반 의미론적 파서
-    
+
     SCIP는 Tree-sitter와 달리 의미론적(semantic) 정보를 제공합니다:
     - 심볼 정의와 참조
     - 타입 정보
     - 호출 관계
     - 크로스 파일 참조
-    
+
     사용 방법:
     1. 사전에 SCIP 인덱스 생성 필요 (scip-python, scip-typescript 등)
     2. 생성된 index.scip 파일을 파싱
-    
+
     Note:
         SCIP는 프로젝트 전체를 인덱싱하므로 느립니다.
         Tree-sitter로 기본 구조를 파악한 후, SCIP로 관계를 보강하는 방식 권장.
@@ -33,7 +32,7 @@ class ScipParser(ParserPort):
 
     def __init__(
         self,
-        scip_index_path: Optional[Path] = None,
+        scip_index_path: Path | None = None,
         auto_index: bool = False
     ):
         """
@@ -45,19 +44,19 @@ class ScipParser(ParserPort):
         """
         self.scip_index_path = scip_index_path
         self.auto_index = auto_index
-        self._index_data: Optional[Dict] = None
+        self._index_data: dict | None = None
         self._is_directory_format: bool = False
 
     def parse_file(
         self,
         file_meta: dict
-    ) -> Tuple[List[RawSymbol], List[RawRelation]]:
+    ) -> tuple[list[RawSymbol], list[RawRelation]]:
         """
         SCIP 인덱스에서 파일 정보 추출
-        
+
         Args:
             file_meta: 파일 메타데이터
-        
+
         Returns:
             (RawSymbol 리스트, RawRelation 리스트)
         """
@@ -69,24 +68,24 @@ class ScipParser(ParserPort):
         try:
             # SCIP 데이터 추출
             scip_data = self._load_file_data(file_meta["path"])
-            
+
             if not scip_data:
                 logger.debug(f"No SCIP data for {file_meta['path']}")
                 return [], []
 
             # 심볼 추출
             symbols = self._extract_symbols_from_scip(scip_data, file_meta)
-            
+
             # 관계 추출
             relations = self._extract_relations_from_scip(scip_data, file_meta)
-            
+
             logger.debug(
                 f"SCIP parsed {file_meta['path']}: "
                 f"{len(symbols)} symbols, {len(relations)} relations"
             )
-            
+
             return symbols, relations
-            
+
         except Exception as e:
             logger.error(f"Failed to parse SCIP data for {file_meta['path']}: {e}")
             return [], []
@@ -134,13 +133,13 @@ class ScipParser(ParserPort):
     def _generate_scip_index(self, repo_root: str) -> bool:
         """
         SCIP 인덱스 생성
-        
+
         Args:
             repo_root: 저장소 루트 경로
-        
+
         Returns:
             성공 여부
-        
+
         Note:
             언어별로 다른 인덱서 필요:
             - Python: scip-python
@@ -160,7 +159,7 @@ class ScipParser(ParserPort):
                     text=True,
                     timeout=300  # 5분 타임아웃
                 )
-                
+
                 if result.returncode == 0:
                     self.scip_index_path = index_path
                     logger.info(f"SCIP index created: {index_path}")
@@ -168,7 +167,7 @@ class ScipParser(ParserPort):
                 else:
                     logger.error(f"scip-python failed: {result.stderr}")
                     return False
-                    
+
             except FileNotFoundError:
                 logger.error("scip-python not found. Install: pip install scip-python")
                 return False
@@ -187,14 +186,14 @@ class ScipParser(ParserPort):
                     text=True,
                     timeout=300
                 )
-                
+
                 if result.returncode == 0:
                     self.scip_index_path = index_path
                     return True
                 else:
                     logger.error(f"scip-typescript failed: {result.stderr}")
                     return False
-                    
+
             except FileNotFoundError:
                 logger.error("scip-typescript not found. Install: npm install -g @sourcegraph/scip-typescript")
                 return False
@@ -202,16 +201,16 @@ class ScipParser(ParserPort):
         logger.warning(f"Unknown project type in {repo_root}")
         return False
 
-    def _load_file_data(self, file_path: str) -> Optional[Dict]:
+    def _load_file_data(self, file_path: str) -> dict | None:
         """
         SCIP 인덱스에서 특정 파일의 데이터 추출
-        
+
         Args:
             file_path: 파일 경로
-        
+
         Returns:
             파일의 SCIP 데이터 (Document)
-        
+
         Note:
             SCIP는 protobuf 형식이지만, 여기서는 단순화를 위해
             JSON 변환 후 처리한다고 가정합니다.
@@ -229,7 +228,7 @@ class ScipParser(ParserPort):
         # 단일 파일 구조 처리
         return self._load_from_single_file(file_path)
 
-    def _load_from_single_file(self, file_path: str) -> Optional[Dict]:
+    def _load_from_single_file(self, file_path: str) -> dict | None:
         """단일 index.scip 파일에서 데이터 로드"""
         try:
             result = subprocess.run(
@@ -249,7 +248,7 @@ class ScipParser(ParserPort):
 
         return None
 
-    def _load_from_directory(self, file_path: str) -> Optional[Dict]:
+    def _load_from_directory(self, file_path: str) -> dict | None:
         """디렉토리 구조(index/)에서 데이터 로드"""
         index_dir = self.scip_index_path
         if not index_dir or not index_dir.is_dir():
@@ -269,7 +268,7 @@ class ScipParser(ParserPort):
         # metadata.json 읽기
         if metadata_file.exists():
             try:
-                with open(metadata_file, "r") as f:
+                with open(metadata_file) as f:
                     metadata = json.load(f)
                     document_data.update(metadata)
             except json.JSONDecodeError as e:
@@ -321,16 +320,16 @@ class ScipParser(ParserPort):
 
     def _extract_symbols_from_scip(
         self,
-        scip_data: Dict,
+        scip_data: dict,
         file_meta: dict
-    ) -> List[RawSymbol]:
+    ) -> list[RawSymbol]:
         """
         SCIP 데이터에서 심볼 추출
-        
+
         Args:
             scip_data: SCIP Document 데이터
             file_meta: 파일 메타데이터
-        
+
         Returns:
             RawSymbol 리스트 (타입 정보 포함)
         """
@@ -366,16 +365,16 @@ class ScipParser(ParserPort):
 
     def _extract_relations_from_scip(
         self,
-        scip_data: Dict,
+        scip_data: dict,
         file_meta: dict
-    ) -> List[RawRelation]:
+    ) -> list[RawRelation]:
         """
         SCIP 데이터에서 관계 추출
-        
+
         Args:
             scip_data: SCIP Document 데이터
             file_meta: 파일 메타데이터
-        
+
         Returns:
             RawRelation 리스트 (정확한 참조 관계)
         """
@@ -383,11 +382,11 @@ class ScipParser(ParserPort):
 
         for occurrence in scip_data.get("occurrences", []):
             symbol_roles = occurrence.get("symbol_roles", 0)
-            
+
             # Reference (not definition)
             if not (symbol_roles & 1) and (symbol_roles > 0):
                 relation_type = self._symbol_roles_to_relation_type(symbol_roles)
-                
+
                 relations.append(RawRelation(
                     repo_id=file_meta["repo_id"],
                     file_path=file_meta["path"],
@@ -405,19 +404,19 @@ class ScipParser(ParserPort):
 
     def _get_symbol_information(
         self,
-        scip_data: Dict,
+        scip_data: dict,
         symbol: str
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """심볼 정보 조회"""
         for symbol_info in scip_data.get("symbols", []):
             if symbol_info.get("symbol") == symbol:
                 return symbol_info
         return None
 
-    def _scip_range_to_span(self, scip_range: List[int]) -> Span:
+    def _scip_range_to_span(self, scip_range: list[int]) -> Span:
         """
         SCIP range → Span 변환
-        
+
         SCIP range: [start_line, start_char, end_line, end_char]
         """
         if len(scip_range) >= 3:
@@ -429,7 +428,7 @@ class ScipParser(ParserPort):
             )
         return (0, 0, 0, 0)
 
-    def _scip_kind_to_kind(self, symbol_info: Optional[Dict]) -> str:
+    def _scip_kind_to_kind(self, symbol_info: dict | None) -> str:
         """SCIP SymbolInformation.Kind → RawSymbol.kind"""
         if not symbol_info:
             return "Unknown"
@@ -451,7 +450,7 @@ class ScipParser(ParserPort):
     def _extract_symbol_name(self, scip_symbol: str) -> str:
         """
         SCIP 심볼 문자열에서 이름 추출
-        
+
         SCIP symbol format: scip-typescript npm <package> <version> <path>`<name>`
         """
         if "`" in scip_symbol:
@@ -459,14 +458,14 @@ class ScipParser(ParserPort):
             parts = scip_symbol.split("`")
             if len(parts) >= 2:
                 return parts[-2]
-        
+
         # 파싱 실패 시 전체 반환
         return scip_symbol.split("/")[-1] if "/" in scip_symbol else scip_symbol
 
     def _symbol_roles_to_relation_type(self, roles: int) -> str:
         """
         SCIP SymbolRole → RawRelation.type
-        
+
         SymbolRole flags:
         - 1: Definition
         - 2: Import

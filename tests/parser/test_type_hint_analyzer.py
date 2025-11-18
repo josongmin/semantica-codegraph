@@ -1,7 +1,8 @@
 """타입 힌트 분석기 테스트"""
 
 import pytest
-from src.parser.type_hint_analyzer import TypeHintAnalyzer, InferredCall
+
+from src.parser.type_hint_analyzer import TypeHintAnalyzer
 
 
 def test_simple_getattr_with_type_hint():
@@ -11,10 +12,10 @@ def process_user(user: UserAuthenticator):
     method = getattr(user, "authenticate")
     return method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     assert len(inferred) == 1
     assert inferred[0].target == "UserAuthenticator.authenticate"
     assert inferred[0].confidence >= 0.8
@@ -27,10 +28,10 @@ def process_user(user):  # 타입 힌트 없음
     method = getattr(user, "authenticate")
     return method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     assert len(inferred) == 0  # 추론 불가
 
 
@@ -45,10 +46,10 @@ def login():
     method = getattr(auth, "authenticate")
     return method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     # get_authenticator() 반환 타입을 추론해야 함
     # 현재 구현에서는 변수 할당 추적이 필요
     # 일단 이 테스트는 skip
@@ -63,10 +64,10 @@ def process():
     method = getattr(user, "login")
     return method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     assert len(inferred) == 1
     assert inferred[0].target == "UserAuthenticator.login"
 
@@ -79,10 +80,10 @@ def process(user: UserAuth, admin: AdminAuth):
     admin_method = getattr(admin, "verify")
     return user_method(), admin_method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     assert len(inferred) == 2
     targets = [call.target for call in inferred]
     assert "UserAuth.login" in targets
@@ -97,10 +98,10 @@ def process(user: UserAuth):
     method = getattr(user, method_name)
     return method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     assert len(inferred) == 0  # 문자열 리터럴이 아니므로 추론 불가
 
 
@@ -111,10 +112,10 @@ def process(user: auth.models.UserAuthenticator):
     method = getattr(user, "authenticate")
     return method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     assert len(inferred) == 1
     assert inferred[0].target == "auth.models.UserAuthenticator.authenticate"
 
@@ -129,10 +130,10 @@ def process(user: Optional[UserAuth]):
         method = getattr(user, "login")
         return method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     # Optional[UserAuth] → UserAuth 추출
     assert len(inferred) == 1
     assert "UserAuth" in inferred[0].target
@@ -143,10 +144,10 @@ def test_syntax_error_handling():
     code = '''
 def invalid syntax here
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     # 오류 발생해도 예외 없이 빈 리스트 반환
     assert inferred == []
 
@@ -158,10 +159,10 @@ def process(user: UserAuth):
     method = getattr(user, "login")
     return method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     assert len(inferred) == 1
     assert inferred[0].confidence > 0.8  # 높은 확률
 
@@ -173,10 +174,10 @@ def process(user: UserAuth):
     method = getattr(user, "login")
     return method()
 '''
-    
+
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
-    
+
     assert len(inferred) == 1
     assert inferred[0].line > 0  # 라인 번호 기록됨
 

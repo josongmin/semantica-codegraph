@@ -1,10 +1,9 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
 
 # 기본 타입 정의
 RepoId = str
-Span = Tuple[int, int, int, int]  # (start_line, start_col, end_line, end_col)
+Span = tuple[int, int, int, int]  # (start_line, start_col, end_line, end_col)
 
 
 # 1) 파서 → IR 빌더 사이에서 사용하는 Raw 모델들
@@ -16,7 +15,7 @@ class RawSymbol:
     kind: str  # "File" | "Class" | "Function" | ...
     name: str
     span: Span
-    attrs: Dict = field(default_factory=dict)  # 언어별 추가 정보 (파라미터, 반환 타입 등)
+    attrs: dict = field(default_factory=dict)  # 언어별 추가 정보 (파라미터, 반환 타입 등)
 
 
 @dataclass
@@ -27,7 +26,7 @@ class RawRelation:
     type: str  # "defines" | "calls" | "inherits" | ...
     src_span: Span
     dst_span: Span
-    attrs: Dict = field(default_factory=dict)  # 예: 호출 위치 컬럼, generic 정보 등
+    attrs: dict = field(default_factory=dict)  # 예: 호출 위치 컬럼, generic 정보 등
 
 
 # 2) 언어 독립 Code Graph IR
@@ -41,7 +40,7 @@ class CodeNode:
     span: Span
     name: str
     text: str
-    attrs: Dict = field(default_factory=dict)  # docstring, modifiers, visibility 등
+    attrs: dict = field(default_factory=dict)  # docstring, modifiers, visibility 등
 
 
 @dataclass
@@ -50,7 +49,7 @@ class CodeEdge:
     src_id: str
     dst_id: str
     type: str  # "defines" | "belongs_to" | "calls" | ...
-    attrs: Dict = field(default_factory=dict)
+    attrs: dict = field(default_factory=dict)
 
 
 # 3) 청킹/검색용 모델
@@ -63,7 +62,7 @@ class CodeChunk:
     span: Span
     language: str
     text: str
-    attrs: Dict = field(default_factory=dict)  # node_kind, importance_score 등
+    attrs: dict = field(default_factory=dict)  # node_kind, importance_score 등
 
 
 @dataclass
@@ -80,7 +79,7 @@ class ChunkResult:
 class Candidate:
     repo_id: RepoId
     chunk_id: str
-    features: Dict[str, float]  # bm25_score, embedding_score, graph_score, ...
+    features: dict[str, float]  # bm25_score, embedding_score, graph_score, ...
     file_path: str
     span: Span
 
@@ -93,13 +92,13 @@ class PackedSnippet:
     span: Span
     role: str  # "primary" | "callee" | "caller" | "type" | "test" | ...
     text: str
-    meta: Dict = field(default_factory=dict)  # node_id, chunk_id, feature 요약 등
+    meta: dict = field(default_factory=dict)  # node_id, chunk_id, feature 요약 등
 
 
 @dataclass
 class PackedContext:
     primary: PackedSnippet
-    supporting: List[PackedSnippet] = field(default_factory=list)
+    supporting: list[PackedSnippet] = field(default_factory=list)
 
 
 # 5) 위치/컨텍스트 정보 (MCP/IDE → 엔진)
@@ -109,9 +108,9 @@ class LocationContext:
     file_path: str
     line: int
     column: int = 0
-    symbol_name: Optional[str] = None
-    filters: Optional[Dict] = None  # language, 디렉토리, test-only 등
-    extra: Optional[Dict] = None  # IDE에서 오는 추가 메타 (열려있는 탭 등)
+    symbol_name: str | None = None
+    filters: dict | None = None  # language, 디렉토리, test-only 등
+    extra: dict | None = None  # IDE에서 오는 추가 메타 (열려있는 탭 등)
 
 
 # 6) 저장소 메타데이터
@@ -120,14 +119,14 @@ class RepoMetadata:
     repo_id: RepoId
     name: str
     root_path: str
-    languages: List[str] = field(default_factory=list)
-    indexed_at: Optional[datetime] = None
+    languages: list[str] = field(default_factory=list)
+    indexed_at: datetime | None = None
     total_files: int = 0
     total_nodes: int = 0
     total_chunks: int = 0
     indexing_status: str = "pending"  # "pending" | "indexing" | "completed" | "failed"
     indexing_progress: float = 0.0
-    attrs: Dict = field(default_factory=dict)  # git_url, branch, tags 등
+    attrs: dict = field(default_factory=dict)  # git_url, branch, tags 등
 
 
 # 7) 인덱싱 상태 추적
@@ -136,21 +135,21 @@ class IndexingStatus:
     repo_id: RepoId
     status: str  # "pending" | "indexing" | "completed" | "failed"
     progress: float = 0.0  # 0.0 ~ 1.0
-    current_file: Optional[str] = None
+    current_file: str | None = None
     total_files: int = 0
     processed_files: int = 0
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    error_message: Optional[str] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
 
 
 # 8) 저장소 설정
 @dataclass
 class RepoConfig:
     """저장소별 인덱싱 설정 (최소 필수)"""
-    
+
     # 제외 패턴
-    exclude_patterns: List[str] = field(default_factory=lambda: [
+    exclude_patterns: list[str] = field(default_factory=lambda: [
         "**/node_modules/**",
         "**/__pycache__/**",
         "**/.git/**",
@@ -161,12 +160,15 @@ class RepoConfig:
         "**/.venv/**",
         "**/.env/**",
     ])
-    
+
     # 언어 필터 (빈 리스트 = 모든 언어)
-    languages: List[str] = field(default_factory=list)
-    
+    languages: list[str] = field(default_factory=list)
+
     # 테스트 파일 포함 여부
     include_tests: bool = True
+
+    # 텍스트/문서 파일 인덱싱 여부
+    index_text_files: bool = True
 
 
 # 9) 파일 메타데이터 (RepoScanner 출력)
@@ -190,5 +192,5 @@ class IndexingResult:
     total_edges: int = 0
     total_chunks: int = 0
     duration_seconds: float = 0.0
-    error_message: Optional[str] = None
+    error_message: str | None = None
 

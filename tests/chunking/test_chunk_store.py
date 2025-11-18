@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.core.models import CodeChunk
 from src.chunking.store import PostgresChunkStore
+from src.core.models import CodeChunk
 
 
 @pytest.fixture
@@ -51,14 +51,14 @@ def test_chunk_store_initialization():
 
 def test_save_chunks(sample_chunks, ensure_test_repo):
     """청크 저장 테스트"""
-    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
-    
+    conn_str = "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(conn_str)
-    
+
     store = PostgresChunkStore(conn_str)
     store.save_chunks(sample_chunks)
-    
+
     # 조회로 검증
     chunk = store.get_chunk("test-repo", "chunk-1")
     assert chunk is not None
@@ -67,24 +67,24 @@ def test_save_chunks(sample_chunks, ensure_test_repo):
 
 def test_find_by_location(sample_chunks, ensure_test_repo):
     """위치로 청크 조회 (Zoekt 매핑 테스트)"""
-    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
-    
+    conn_str = "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(conn_str)
-    
+
     store = PostgresChunkStore(conn_str)
     store.save_chunks(sample_chunks)
-    
+
     # main.py의 15번 라인 (chunk-1에 포함됨: span 10-20)
     chunk = store.find_by_location("test-repo", "main.py", 15)
     assert chunk is not None
     assert chunk.id == "chunk-1"
-    
+
     # main.py의 30번 라인 (chunk-2에 포함됨: span 25-40)
     chunk = store.find_by_location("test-repo", "main.py", 30)
     assert chunk is not None
     assert chunk.id == "chunk-2"
-    
+
     # utils.py의 7번 라인 (chunk-3에 포함됨: span 5-10)
     chunk = store.find_by_location("test-repo", "utils.py", 7)
     assert chunk is not None
@@ -93,14 +93,14 @@ def test_find_by_location(sample_chunks, ensure_test_repo):
 
 def test_get_chunks_by_node(sample_chunks, ensure_test_repo):
     """노드로 청크 조회 테스트"""
-    conn_str = "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
-    
+    conn_str = "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(conn_str)
-    
+
     store = PostgresChunkStore(conn_str)
     store.save_chunks(sample_chunks)
-    
+
     chunks = store.get_chunks_by_node("test-repo", "test-repo:main.py:Function:foo")
     assert len(chunks) == 1
     assert chunks[0].id == "chunk-1"
@@ -108,8 +108,7 @@ def test_get_chunks_by_node(sample_chunks, ensure_test_repo):
 
 def test_row_to_chunk_conversion():
     """DB row → CodeChunk 변환 테스트"""
-    from src.chunking.store import PostgresChunkStore
-    
+
     row = (
         "test-repo",
         "chunk-1",
@@ -120,7 +119,7 @@ def test_row_to_chunk_conversion():
         "def foo():\n    return 42",
         {"node_kind": "Function"}
     )
-    
+
     # Store 인스턴스 없이 변환 로직만 테스트
     chunk = CodeChunk(
         repo_id=row[0],
@@ -132,7 +131,7 @@ def test_row_to_chunk_conversion():
         text=row[9],
         attrs=row[10]
     )
-    
+
     assert chunk.repo_id == "test-repo"
     assert chunk.id == "chunk-1"
     assert chunk.span == (10, 0, 20, 0)

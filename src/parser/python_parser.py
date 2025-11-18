@@ -1,13 +1,12 @@
 """Python용 Tree-sitter 파서"""
 
 import logging
-from typing import List
 
-from tree_sitter import Language, Node
 import tree_sitter_python
+from tree_sitter import Language, Node
 
-from .base import BaseTreeSitterParser
 from ..core.models import RawRelation, RawSymbol
+from .base import BaseTreeSitterParser
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 class PythonTreeSitterParser(BaseTreeSitterParser):
     """
     Python용 Tree-sitter 파서
-    
+
     추출하는 심볼:
     - File (파일 전체)
     - Class (클래스 정의)
@@ -32,7 +31,7 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
         root: Node,
         source: bytes,
         file_meta: dict
-    ) -> List[RawSymbol]:
+    ) -> list[RawSymbol]:
         """Python 심볼 추출"""
         symbols = []
 
@@ -63,7 +62,7 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
         node: Node,
         source: bytes,
         file_meta: dict,
-        symbols: List[RawSymbol],
+        symbols: list[RawSymbol],
         parent_class: str | None
     ):
         """재귀적으로 노드 순회하며 심볼 추출"""
@@ -73,7 +72,7 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
             # 데코레이터 추출
             decorators = []
             definition_node = None
-            
+
             for child in node.children:
                 if child.type == "decorator":
                     dec_text = self._get_node_text(child, source)
@@ -82,7 +81,7 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
                     decorators.append(dec_text)
                 elif child.type in ("function_definition", "class_definition"):
                     definition_node = child
-            
+
             # 실제 정의를 파싱하되, 데코레이터 정보를 전달
             if definition_node:
                 self._extract_definition_with_decorators(
@@ -130,10 +129,7 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
 
                 # 클래스 내부면 Method, 아니면 Function
                 kind = "Method" if parent_class else "Function"
-                if parent_class:
-                    full_name = f"{parent_class}.{func_name}"
-                else:
-                    full_name = func_name
+                full_name = f"{parent_class}.{func_name}" if parent_class else func_name
 
                 self._add_function_symbol(
                     node,
@@ -157,7 +153,7 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
                     parent_class
                 )
 
-    def _extract_parameters(self, func_node: Node, source: bytes) -> List[dict]:
+    def _extract_parameters(self, func_node: Node, source: bytes) -> list[dict]:
         """함수 파라미터 추출"""
         params_node = func_node.child_by_field_name("parameters")
         if not params_node:
@@ -188,7 +184,7 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
 
         return params
 
-    def _extract_decorators(self, node: Node, source: bytes) -> List[str]:
+    def _extract_decorators(self, node: Node, source: bytes) -> list[str]:
         """데코레이터 추출"""
         decorators = []
         for child in node.children:
@@ -200,7 +196,7 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
                 decorators.append(dec_text)
         return decorators
 
-    def _extract_base_classes(self, class_node: Node, source: bytes) -> List[str]:
+    def _extract_base_classes(self, class_node: Node, source: bytes) -> list[str]:
         """상속 클래스 추출"""
         bases = []
         superclasses = class_node.child_by_field_name("superclasses")
@@ -245,15 +241,15 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
         root: Node,
         source: bytes,
         file_meta: dict,
-        symbols: List[RawSymbol]
-    ) -> List[RawRelation]:
+        symbols: list[RawSymbol]
+    ) -> list[RawRelation]:
         """
         Python 관계 추출
-        
+
         Tree-sitter 레벨에서는 제한적:
         - 클래스 → 메서드 (defines)
         - 상속 관계 (inherits) - 단순 텍스트 매칭
-        
+
         정확한 호출 관계, 타입 참조는 Phase 2 SCIP에서 추가
         """
         relations = []
@@ -301,9 +297,9 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
         node: Node,
         source: bytes,
         file_meta: dict,
-        symbols: List[RawSymbol],
+        symbols: list[RawSymbol],
         parent_class: str | None,
-        decorators: List[str]
+        decorators: list[str]
     ):
         """decorated_definition에서 추출한 정의 처리"""
         if node.type == "class_definition":
@@ -318,7 +314,7 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
                     class_name,
                     decorators
                 )
-                
+
                 # 클래스 내부 재귀
                 body = node.child_by_field_name("body")
                 if body:
@@ -330,14 +326,14 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
                             symbols,
                             parent_class=class_name
                         )
-        
+
         elif node.type == "function_definition":
             name_node = node.child_by_field_name("name")
             if name_node:
                 func_name = self._get_node_text(name_node, source)
                 kind = "Method" if parent_class else "Function"
                 full_name = f"{parent_class}.{func_name}" if parent_class else func_name
-                
+
                 self._add_function_symbol(
                     node,
                     source,
@@ -354,9 +350,9 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
         node: Node,
         source: bytes,
         file_meta: dict,
-        symbols: List[RawSymbol],
+        symbols: list[RawSymbol],
         class_name: str,
-        decorators: List[str]
+        decorators: list[str]
     ):
         """클래스 심볼 추가"""
         symbols.append(RawSymbol(
@@ -378,11 +374,11 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
         node: Node,
         source: bytes,
         file_meta: dict,
-        symbols: List[RawSymbol],
+        symbols: list[RawSymbol],
         full_name: str,
         kind: str,
         parent_class: str | None,
-        decorators: List[str]
+        decorators: list[str]
     ):
         """함수/메서드 심볼 추가"""
         symbols.append(RawSymbol(

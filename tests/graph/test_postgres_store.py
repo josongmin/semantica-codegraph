@@ -1,11 +1,11 @@
 """PostgreSQL GraphStore 테스트"""
 
-import pytest
 import os
+
+import pytest
 
 from src.core.models import CodeEdge, CodeNode
 from src.graph.store_postgres import PostgresGraphStore
-
 
 # PostgreSQL 연결이 필요하므로 실제 DB 테스트는 통합 테스트에서
 # 여기서는 기본적인 것만 테스트
@@ -15,7 +15,7 @@ def connection_string():
     """테스트용 연결 문자열"""
     return os.getenv(
         "TEST_DB_URL",
-        "host=localhost port=5433 dbname=semantica_test user=semantica password=semantica"
+        "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
     )
 
 
@@ -72,12 +72,12 @@ def test_save_and_retrieve(connection_string, sample_nodes, sample_edges, ensure
     """저장 및 조회 테스트"""
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(connection_string)
-    
+
     store = PostgresGraphStore(connection_string)
-    
+
     # 저장
     store.save_graph(sample_nodes, sample_edges)
-    
+
     # 조회
     node = store.get_node("test-repo", sample_nodes[0].id)
     assert node is not None
@@ -88,10 +88,10 @@ def test_get_node_by_location(connection_string, sample_nodes, ensure_test_repo)
     """위치 기반 조회 테스트"""
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(connection_string)
-    
+
     store = PostgresGraphStore(connection_string)
     store.save_graph(sample_nodes, [])
-    
+
     # test.py의 5번 라인에 있는 노드 찾기
     node = store.get_node_by_location("test-repo", "test.py", 5)
     assert node is not None
@@ -102,10 +102,10 @@ def test_neighbors(connection_string, sample_nodes, sample_edges, ensure_test_re
     """이웃 노드 조회 테스트"""
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(connection_string)
-    
+
     store = PostgresGraphStore(connection_string)
     store.save_graph(sample_nodes, sample_edges)
-    
+
     # User 클래스의 이웃 (User.save 메서드)
     neighbors = store.neighbors("test-repo", sample_nodes[0].id, k=1)
     assert len(neighbors) > 0
@@ -115,13 +115,13 @@ def test_delete_repo(connection_string, sample_nodes, ensure_test_repo):
     """저장소 삭제 테스트"""
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(connection_string)
-    
+
     store = PostgresGraphStore(connection_string)
     store.save_graph(sample_nodes, [])
-    
+
     # 삭제
     store.delete_repo("test-repo")
-    
+
     # 조회 시 None
     node = store.get_node("test-repo", sample_nodes[0].id)
     assert node is None
@@ -129,8 +129,7 @@ def test_delete_repo(connection_string, sample_nodes, ensure_test_repo):
 
 def test_row_to_node_conversion():
     """DB row → CodeNode 변환 테스트 (연결 없이 메서드만 테스트)"""
-    from src.graph.store_postgres import PostgresGraphStore
-    
+
     row = (
         "test-repo",
         "test-repo:test.py:Class:User",
@@ -142,11 +141,11 @@ def test_row_to_node_conversion():
         "class User:\n    pass",
         {"docstring": "User class"}
     )
-    
+
     # _row_to_node은 연결 없이 호출 가능 (static method처럼 사용)
     # 하지만 인스턴스 메서드이므로 일단 skip
     # 실제로는 통합 테스트에서 확인
-    
+
     # 간단한 검증만
     assert row[0] == "test-repo"
     assert row[2] == "Class"

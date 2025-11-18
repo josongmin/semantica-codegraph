@@ -1,14 +1,13 @@
 """코드 검색 API"""
 
-from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from src.core.models import LocationContext
 from src.core.bootstrap import create_bootstrap
-from src.search.retriever.hybrid_retriever import HybridRetriever
+from src.core.models import LocationContext
 from src.search.graph.postgres_graph_adapter import PostgresGraphSearch
+from src.search.retriever.hybrid_retriever import HybridRetriever
 from src.search.semantic.pgvector_adapter import PgVectorSemanticSearch
 
 router = APIRouter()
@@ -20,17 +19,17 @@ class SearchRequest(BaseModel):
     query: str
     repo_id: str
     k: int = 20
-    file_path: Optional[str] = None
-    line: Optional[int] = None
-    column: Optional[int] = None
-    weights: Optional[dict] = None  # {"lexical": 0.3, "semantic": 0.5, "graph": 0.2}
+    file_path: str | None = None
+    line: int | None = None
+    column: int | None = None
+    weights: dict | None = None  # {"lexical": 0.3, "semantic": 0.5, "graph": 0.2}
 
 
 class SearchResult(BaseModel):
     """검색 결과"""
     chunk_id: str
     file_path: str
-    span: List[int]  # [start_line, start_col, end_line, end_col]
+    span: list[int]  # [start_line, start_col, end_line, end_col]
     score: float
     features: dict
 
@@ -39,7 +38,7 @@ class SearchResponse(BaseModel):
     """검색 응답"""
     query: str
     repo_id: str
-    results: List[SearchResult]
+    results: list[SearchResult]
     total: int
 
 
@@ -47,7 +46,7 @@ class SearchResponse(BaseModel):
 async def search_code(request: SearchRequest):
     """
     하이브리드 코드 검색
-    
+
     Lexical + Semantic + Graph 검색을 통합하여 실행
     """
     try:
@@ -60,7 +59,7 @@ async def search_code(request: SearchRequest):
                 line=request.line,
                 column=request.column or 0,
             )
-        
+
         # HybridRetriever 생성
         graph_search = PostgresGraphSearch(bootstrap.graph_store)
         semantic_search = PgVectorSemanticSearch(
@@ -68,13 +67,13 @@ async def search_code(request: SearchRequest):
             embedding_store=bootstrap.embedding_store,
             chunk_store=bootstrap.chunk_store,
         )
-        
+
         retriever = HybridRetriever(
             lexical_search=bootstrap.lexical_search,
             semantic_search=semantic_search,
             graph_search=graph_search,
         )
-        
+
         # 검색 실행
         candidates = retriever.retrieve(
             repo_id=request.repo_id,
@@ -83,7 +82,7 @@ async def search_code(request: SearchRequest):
             location_ctx=location_ctx,
             weights=request.weights,
         )
-        
+
         # 결과 변환
         results = [
             SearchResult(
@@ -95,7 +94,7 @@ async def search_code(request: SearchRequest):
             )
             for c in candidates
         ]
-        
+
         return SearchResponse(
             query=request.query,
             repo_id=request.repo_id,
@@ -119,7 +118,7 @@ async def search_lexical(
             query=query,
             k=k,
         )
-        
+
         return {
             "query": query,
             "repo_id": repo_id,
@@ -150,13 +149,13 @@ async def search_semantic(
             embedding_store=bootstrap.embedding_store,
             chunk_store=bootstrap.chunk_store,
         )
-        
+
         results = semantic_search.search(
             repo_id=repo_id,
             query=query,
             k=k,
         )
-        
+
         return {
             "query": query,
             "repo_id": repo_id,

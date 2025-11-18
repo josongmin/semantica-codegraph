@@ -3,6 +3,39 @@
 from enum import Enum
 
 
+class NodeKind(str, Enum):
+    """코드 및 문서 노드 타입"""
+
+    # 코드 노드
+    Function = "Function"
+    Class = "Class"
+    Method = "Method"
+    Variable = "Variable"
+    Import = "Import"
+    File = "File"
+
+    # 문서 노드 (텍스트 파일 인덱싱)
+    Document = "Document"
+
+    def is_code_node(self) -> bool:
+        """코드 노드 여부 (관계 추출 필요)"""
+        return self in {
+            NodeKind.Function,
+            NodeKind.Class,
+            NodeKind.Method,
+            NodeKind.Variable,
+            NodeKind.Import
+        }
+
+    def is_document_node(self) -> bool:
+        """문서 노드 여부"""
+        return self == NodeKind.Document
+
+    def supports_edges(self) -> bool:
+        """이 노드가 엣지(관계)를 가질 수 있는지"""
+        return self.is_code_node()
+
+
 class LexicalSearchBackend(str, Enum):
     """BM25 검색 백엔드 선택"""
 

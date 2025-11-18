@@ -1,11 +1,11 @@
 """인덱싱 파이프라인"""
 
+import asyncio
 import logging
 import multiprocessing
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from ..chunking.chunker import Chunker
 from ..core.models import (
@@ -25,6 +25,7 @@ from ..core.repo_store import RepoMetadataStore
 from ..embedding.service import EmbeddingService
 from ..graph.ir_builder import IRBuilder
 from ..parser import create_parser
+from ..parser.cache import ParseCache
 from ..search.ports.lexical_search_port import LexicalSearchPort
 from .repo_scanner import RepoScanner
 
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 class IndexingPipeline:
     """
     인덱싱 파이프라인
-    
+
     전체 플로우:
     1. 파일 스캔
     2. 파싱 (Parser)
@@ -58,6 +59,7 @@ class IndexingPipeline:
         ir_builder: IRBuilder,
         chunker: Chunker,
         scanner: RepoScanner,
+        parse_cache: ParseCache | None = None,
     ):
         """
         Args:
@@ -70,6 +72,7 @@ class IndexingPipeline:
             ir_builder: IR 빌더
             chunker: 청커
             scanner: 저장소 스캐너
+            parse_cache: 파싱 캐시 (None이면 비활성화)
         """
         self.repo_store = repo_store
         self.graph_store = graph_store
@@ -80,23 +83,26 @@ class IndexingPipeline:
         self.ir_builder = ir_builder
         self.chunker = chunker
         self.scanner = scanner
-        
+
         # 성능 최적화: 파서 캐시
         self._parser_cache = {}
+
+        # 파싱 결과 캐시
+        self.parse_cache = parse_cache if parse_cache else ParseCache()
 
     def index_repository(
         self,
         root_path: str,
-        repo_id: Optional[RepoId] = None,
-        name: Optional[str] = None,
-        config: Optional[RepoConfig] = None,
+        repo_id: RepoId | None = None,
+        name: str | None = None,
+        config: RepoConfig | None = None,
         parallel: bool = True,
-        max_workers: Optional[int] = None,
-        parallel_threshold: Optional[int] = None,
+        max_workers: int | None = None,
+        parallel_threshold: int | None = None,
     ) -> IndexingResult:
         """
         저장소 인덱싱
-        
+
         Args:
             root_path: 저장소 루트 경로
             repo_id: 저장소 ID (None이면 자동 생성)
@@ -105,21 +111,21 @@ class IndexingPipeline:
             parallel: 병렬 처리 활성화 (기본값: True)
             max_workers: 병렬 처리 워커 수 (None이면 CPU 코어 수)
             parallel_threshold: 병렬 처리 시작 임계값 (None이면 자동: max(3, cpu_count // 2))
-        
+
         Returns:
             IndexingResult
         """
         start_time = time.time()
-        
+
         # 1. Repo ID 생성
         if repo_id is None:
             repo_id = self._generate_repo_id(root_path)
-        
+
         if name is None:
             name = Path(root_path).name
-        
+
         logger.info(f"Starting indexing: {repo_id} ({root_path})")
-        
+
         try:
             # 2. 메타데이터 생성 및 저장
             metadata = RepoMetadata(
@@ -128,14 +134,14 @@ class IndexingPipeline:
                 root_path=str(Path(root_path).resolve())
             )
             self.repo_store.save(metadata)
-            
+
             # 3. 상태: indexing 시작
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.0)
-            
+
             # 4. 파일 스캔
             files = self.scanner.scan(root_path, config)
             logger.info(f"Found {len(files)} files to index")
-            
+
             if len(files) == 0:
                 logger.warning("No files found to index")
                 return IndexingResult(
@@ -144,19 +150,20 @@ class IndexingPipeline:
                     total_files=0,
                     duration_seconds=time.time() - start_time
                 )
-            
+
             # 5. 파일별 파싱 + IR 변환 + 그래프 저장
             all_nodes = []
             all_edges = []
             failed_files = []  # 실패한 파일 추적
-            
+            last_progress_update = 0.0  # 마지막 업데이트 진행률
+
             # 병렬 처리 여부 결정
-            use_parallel = parallel and hasattr(self, 'config') and getattr(self.config, 'parallel_indexing_enabled', True)
-            
+            use_parallel = parallel
+
             # 병렬 처리 임계값 계산
             if parallel_threshold is None:
-                parallel_threshold = max(3, multiprocessing.cpu_count() // 2)
-            
+                parallel_threshold = 5  # 파일 5개부터 병렬 처리
+
             if use_parallel and len(files) > parallel_threshold:
                 # 병렬 파싱
                 logger.info(f"Using parallel parsing (threshold={parallel_threshold}, files={len(files)})")
@@ -169,10 +176,10 @@ class IndexingPipeline:
                 for i, file_meta in enumerate(files, 1):
                     try:
                         logger.debug(f"Processing [{i}/{len(files)}]: {file_meta.file_path}")
-                        
+
                         # 파싱 (캐시된 파서 사용)
                         raw_symbols, raw_relations = self._parse_file(repo_id, file_meta)
-                        
+
                         # IR 변환
                         file_content = self._read_file(file_meta.abs_path)
                         nodes, edges = self.ir_builder.build(
@@ -180,24 +187,25 @@ class IndexingPipeline:
                             raw_relations=raw_relations,
                             source_code={file_meta.file_path: file_content}
                         )
-                        
+
                         all_nodes.extend(nodes)
                         all_edges.extend(edges)
-                        
-                        # 진행률 업데이트 최적화: 매 10개 파일 또는 10%마다
-                        if i % 10 == 0 or i == len(files) or (i / len(files)) % 0.1 < (1 / len(files)):
-                            progress = (i / len(files)) * 0.5
+
+                        # 진행률 업데이트 최적화: 5% 단위로만 업데이트
+                        progress = (i / len(files)) * 0.5
+                        if progress - last_progress_update >= 0.05 or i == len(files):
                             self.repo_store.update_indexing_status(
                                 repo_id, "indexing", progress=progress
                             )
-                    
+                            last_progress_update = progress
+
                     except Exception as e:
                         logger.error(f"Failed to parse {file_meta.file_path}: {e}")
                         failed_files.append((file_meta.file_path, str(e)))
                         continue
-            
+
             logger.info(f"Parsed {len(all_nodes)} nodes, {len(all_edges)} edges")
-            
+
             # 실패한 파일 로깅
             if failed_files:
                 logger.warning(f"Failed to parse {len(failed_files)} files:")
@@ -205,24 +213,24 @@ class IndexingPipeline:
                     logger.warning(f"  - {file_path}: {error}")
                 if len(failed_files) > 10:
                     logger.warning(f"  ... and {len(failed_files) - 10} more")
-            
+
             # 6. 그래프 저장
             if all_nodes:
                 self.graph_store.save_graph(all_nodes, all_edges)
                 logger.info("Saved graph to database")
-            
+
             # 7. 청킹
             chunks = self.chunker.chunk(all_nodes)
             logger.info(f"Generated {len(chunks)} chunks")
-            
+
             # 8. 청크 저장
             if chunks:
                 self.chunk_store.save_chunks(chunks)
                 logger.info("Saved chunks to database")
-            
+
             # 진행률 50% (청킹 완료)
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.5)
-            
+
             # 9. Lexical 인덱싱
             if chunks:
                 try:
@@ -230,35 +238,48 @@ class IndexingPipeline:
                     logger.info("Indexed chunks in lexical search")
                 except Exception as e:
                     logger.error(f"Lexical indexing failed: {e}")
-            
+
             # 진행률 70% (Lexical 완료)
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.7)
-            
-            # 10. 임베딩 생성 및 저장 (배치 병렬화)
+
+            # 10. 임베딩 생성 및 저장 (비동기 병렬 + 중복 제거)
             if chunks:
                 try:
-                    logger.info("Generating embeddings...")
-                    vectors = self._embed_chunks_in_batches(chunks, repo_id)
-                    
+                    import hashlib
+
+                    logger.info("Generating embeddings (async + dedup)...")
+                    vectors = asyncio.run(
+                        self._embed_chunks_async(chunks, repo_id)
+                    )
+
+                    # content_hash 계산
+                    content_hashes = []
+                    for chunk in chunks:
+                        text = self.embedding_service._prepare_chunk_text(chunk)
+                        content_hash = hashlib.md5(text.encode()).hexdigest()
+                        content_hashes.append(content_hash)
+
                     chunk_ids = [chunk.id for chunk in chunks]
-                    self.embedding_store.save_embeddings(repo_id, chunk_ids, vectors)
+                    self.embedding_store.save_embeddings(
+                        repo_id, chunk_ids, vectors, content_hashes=content_hashes
+                    )
                     logger.info(f"Saved {len(vectors)} embeddings")
                 except Exception as e:
                     logger.error(f"Embedding failed: {e}")
-            
+
             # 11. 메타데이터 업데이트
             metadata.total_files = len(files)
             metadata.total_nodes = len(all_nodes)
             metadata.total_chunks = len(chunks)
-            metadata.languages = list(set(f.language for f in files))
+            metadata.languages = list({f.language for f in files})
             self.repo_store.save(metadata)
-            
+
             # 12. 상태: completed
             self.repo_store.update_indexing_status(repo_id, "completed", progress=1.0)
-            
+
             duration = time.time() - start_time
             logger.info(f"Indexing completed in {duration:.2f}s")
-            
+
             return IndexingResult(
                 repo_id=repo_id,
                 status="completed",
@@ -269,32 +290,40 @@ class IndexingPipeline:
                 total_chunks=len(chunks),
                 duration_seconds=duration
             )
-        
+
         except Exception as e:
             logger.error(f"Indexing failed: {e}", exc_info=True)
-            
+
             # 상태: failed
             self.repo_store.update_indexing_status(
                 repo_id, "failed", error=str(e)
             )
-            
+
             return IndexingResult(
                 repo_id=repo_id,
                 status="failed",
                 error_message=str(e),
                 duration_seconds=time.time() - start_time
             )
-    
+
     def _generate_repo_id(self, root_path: str) -> RepoId:
         """저장소 ID 생성 (간단한 전략: 디렉토리 이름)"""
         return Path(root_path).resolve().name
-    
+
     def _parse_file(
         self,
         repo_id: RepoId,
         file_meta: FileMetadata
-    ) -> Tuple[List[RawSymbol], List[RawRelation]]:
-        """파일 파싱 (캐시된 파서 사용)"""
+    ) -> tuple[list[RawSymbol], list[RawRelation]]:
+        """파일 파싱 (파서 + 파싱 결과 캐시 사용)"""
+        # 1. 파싱 결과 캐시 확인
+        if self.parse_cache:
+            cached = self.parse_cache.get(repo_id, Path(file_meta.abs_path))
+            if cached:
+                logger.debug(f"Parse cache HIT: {file_meta.file_path}")
+                return cached
+
+        # 2. 캐시 미스 - 파싱 실행
         # 파서 캐싱: 언어별로 재사용
         if file_meta.language not in self._parser_cache:
             parser = create_parser(file_meta.language)
@@ -304,86 +333,230 @@ class IndexingPipeline:
             self._parser_cache[file_meta.language] = parser
         else:
             parser = self._parser_cache[file_meta.language]
-        
-        return parser.parse_file({
+
+        symbols, relations = parser.parse_file({
             "repo_id": repo_id,
             "path": file_meta.file_path,  # 상대 경로 (base.py에서 사용)
             "file_path": file_meta.file_path,  # 호환성을 위해 유지
             "abs_path": file_meta.abs_path,  # 절대 경로
             "language": file_meta.language
         })
-    
+
+        # 3. 파싱 결과 캐시 저장
+        if self.parse_cache:
+            self.parse_cache.save(repo_id, Path(file_meta.abs_path), symbols, relations)
+            logger.debug(f"Parse cache SAVED: {file_meta.file_path}")
+
+        return symbols, relations
+
     def _read_file(self, abs_path: str) -> str:
         """파일 읽기"""
         try:
-            with open(abs_path, "r", encoding="utf-8") as f:
+            with open(abs_path, encoding="utf-8") as f:
                 return f.read()
         except Exception as e:
             logger.error(f"Failed to read file {abs_path}: {e}")
             return ""
-    
+
     def _embed_chunks_in_batches(
         self,
-        chunks: List[CodeChunk],
+        chunks: list[CodeChunk],
         repo_id: RepoId,
-        batch_size: int = 100
-    ) -> List[List[float]]:
+        batch_size: int | None = None
+    ) -> list[list[float]]:
         """
         청크를 배치로 나눠 임베딩 생성 (진행률 업데이트 포함)
-        
+
         Args:
             chunks: 청크 리스트
             repo_id: 저장소 ID
-            batch_size: 배치 크기 (API rate limit 고려)
-        
+            batch_size: 배치 크기 (None이면 모델별 자동 설정)
+
         Returns:
             임베딩 벡터 리스트
         """
+        # 모델별 최적 배치 크기 설정
+        if batch_size is None:
+            from ..core.enums import EmbeddingModel
+            model = self.embedding_service.model
+
+            if model == EmbeddingModel.CODESTRAL_EMBED:
+                batch_size = 200  # Mistral은 200까지 지원
+            elif model in (EmbeddingModel.OPENAI_3_SMALL, EmbeddingModel.OPENAI_3_LARGE):
+                batch_size = 150  # OpenAI는 150까지
+            else:
+                batch_size = 100  # 기본값
         all_vectors = []
         total_chunks = len(chunks)
-        
+        last_progress_update = 0.7  # 시작 진행률
+
         for i in range(0, total_chunks, batch_size):
             batch = chunks[i:i + batch_size]
             batch_vectors = self.embedding_service.embed_chunks(batch)
             all_vectors.extend(batch_vectors)
-            
-            # 진행률 업데이트 (70-100%)
+
+            # 진행률 업데이트 최적화: 5% 단위로만 업데이트
             progress = 0.7 + (min(i + batch_size, total_chunks) / total_chunks) * 0.3
-            self.repo_store.update_indexing_status(
-                repo_id, "indexing", progress=progress
-            )
-            
+            if progress - last_progress_update >= 0.05 or i + batch_size >= total_chunks:
+                self.repo_store.update_indexing_status(
+                    repo_id, "indexing", progress=progress
+                )
+                last_progress_update = progress
+
             logger.debug(
                 f"Embedded batch {i // batch_size + 1}/{(total_chunks + batch_size - 1) // batch_size} "
                 f"({min(i + batch_size, total_chunks)}/{total_chunks} chunks)"
             )
-        
+
         return all_vectors
-    
+
+    async def _embed_chunks_async(
+        self,
+        chunks: list[CodeChunk],
+        repo_id: RepoId,
+        batch_size: int | None = None,
+        max_concurrent: int = 3
+    ) -> list[list[float]]:
+        """
+        청크를 비동기 병렬로 임베딩 생성 (중복 제거 포함)
+
+        여러 배치를 동시에 API 호출하여 대기 시간 단축
+        중복 청크는 기존 임베딩 재사용
+        """
+        import hashlib
+
+        # 배치 크기 설정
+        if batch_size is None:
+            from ..core.enums import EmbeddingModel
+            model = self.embedding_service.model
+
+            if model == EmbeddingModel.CODESTRAL_EMBED:
+                batch_size = 200
+            elif model in (EmbeddingModel.OPENAI_3_SMALL, EmbeddingModel.OPENAI_3_LARGE):
+                batch_size = 150
+            else:
+                batch_size = 100
+
+        # 1. 청크 텍스트 해시 계산
+        chunk_hashes = []
+        for chunk in chunks:
+            text = self.embedding_service._prepare_chunk_text(chunk)
+            content_hash = hashlib.md5(text.encode()).hexdigest()
+            chunk_hashes.append(content_hash)
+
+        # 2. 기존 임베딩 조회 (배치)
+        model_name = self.embedding_service.model.value
+        existing_embeddings = self.embedding_store.get_embeddings_by_content_hashes(
+            chunk_hashes,
+            model_name
+        )
+
+        cache_hits = len(existing_embeddings)
+        logger.info(f"Embedding cache: {cache_hits}/{len(chunks)} hits ({cache_hits/len(chunks)*100:.1f}%)")
+
+        # 3. 임베딩이 없는 청크만 필터링
+        chunks_to_embed = []
+        chunk_indices = []  # 원래 위치 기록
+
+        for i, (chunk, content_hash) in enumerate(zip(chunks, chunk_hashes, strict=False)):
+            if content_hash not in existing_embeddings:
+                chunks_to_embed.append(chunk)
+                chunk_indices.append(i)
+
+        # 4. 새로운 청크만 임베딩 생성
+        new_vectors = []
+        if chunks_to_embed:
+            logger.info(f"Generating {len(chunks_to_embed)} new embeddings...")
+
+            # 배치 생성
+            batches = [chunks_to_embed[i:i+batch_size] for i in range(0, len(chunks_to_embed), batch_size)]
+            total_batches = len(batches)
+
+            # Semaphore로 동시 실행 제어
+            semaphore = asyncio.Semaphore(max_concurrent)
+            completed_batches = 0
+            last_progress = 0.7
+
+            async def embed_batch_with_tracking(batch_idx: int, batch: list[CodeChunk]):
+                """배치 임베딩 + 진행률 추적"""
+                nonlocal completed_batches, last_progress
+
+                async with semaphore:
+                    loop = asyncio.get_running_loop()
+
+                    # 동기 함수를 비동기로 실행
+                    vectors = await loop.run_in_executor(
+                        None,
+                        self.embedding_service.embed_chunks,
+                        batch
+                    )
+
+                    completed_batches += 1
+
+                    # 진행률 업데이트 (70-100%)
+                    progress = 0.7 + (completed_batches / total_batches) * 0.3
+                    if progress - last_progress >= 0.05 or completed_batches == total_batches:
+                        self.repo_store.update_indexing_status(repo_id, "indexing", progress=progress)
+                        last_progress = progress
+
+                    logger.debug(f"Batch {completed_batches}/{total_batches} done")
+
+                    return vectors
+
+            # 모든 배치를 비동기로 실행
+            tasks = [
+                embed_batch_with_tracking(i, batch)
+                for i, batch in enumerate(batches)
+            ]
+
+            results = await asyncio.gather(*tasks)
+
+            # 결과 평면화
+            for vectors in results:
+                new_vectors.extend(vectors)
+        else:
+            logger.info("All embeddings found in cache, skipping API calls")
+
+        # 5. 결과 병합 (캐시 + 새로 생성)
+        all_vectors = [None] * len(chunks)
+
+        # 캐시된 임베딩 배치
+        for i, content_hash in enumerate(chunk_hashes):
+            if content_hash in existing_embeddings:
+                all_vectors[i] = existing_embeddings[content_hash]
+
+        # 새로 생성된 임베딩 배치
+        for idx, vector in zip(chunk_indices, new_vectors, strict=False):
+            all_vectors[idx] = vector
+
+        logger.info(f"Total embeddings: {len(all_vectors)} (cached: {cache_hits}, new: {len(new_vectors)})")
+
+        return all_vectors
+
     def _parse_files_parallel(
         self,
         repo_id: RepoId,
-        files: List[FileMetadata],
-        max_workers: Optional[int] = None,
-    ) -> Tuple[List[CodeNode], List[CodeEdge], List[Tuple[str, str]]]:
+        files: list[FileMetadata],
+        max_workers: int | None = None,
+    ) -> tuple[list[CodeNode], list[CodeEdge], list[tuple[str, str]]]:
         """
         파일들을 병렬로 파싱
-        
+
         Args:
             repo_id: 저장소 ID
             files: 파일 메타데이터 리스트
             max_workers: 워커 수 (None이면 CPU 코어 수)
-        
+
         Returns:
             (모든 노드, 모든 엣지, 실패한 파일 리스트)
         """
         if max_workers is None:
             max_workers = multiprocessing.cpu_count()
-        
+
         all_nodes = []
         all_edges = []
         failed_files = []
-        
+
         # ProcessPoolExecutor 사용 (CPU 집약적 작업)
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             # 각 파일에 대한 future 생성
@@ -391,13 +564,13 @@ class IndexingPipeline:
                 executor.submit(_parse_file_worker, repo_id, file_meta): file_meta
                 for file_meta in files
             }
-            
+
             # 완료된 작업부터 처리
             for i, future in enumerate(as_completed(future_to_file), 1):
                 file_meta = future_to_file[future]
                 try:
                     nodes, edges, error = future.result()
-                    
+
                     if error:
                         # 워커에서 에러 발생
                         logger.error(f"Failed to parse {file_meta.file_path}: {error}")
@@ -406,30 +579,30 @@ class IndexingPipeline:
                         all_nodes.extend(nodes)
                         all_edges.extend(edges)
                         logger.debug(f"Parsed [{i}/{len(files)}]: {file_meta.file_path}")
-                    
+
                     # 진행률 업데이트 최적화: 매 10개 파일 또는 10%마다
                     if i % 10 == 0 or i == len(files) or (i / len(files)) % 0.1 < (1 / len(files)):
                         progress = (i / len(files)) * 0.5
                         self.repo_store.update_indexing_status(
                             repo_id, "indexing", progress=progress
                         )
-                    
+
                 except Exception as e:
                     logger.error(f"Failed to get result for {file_meta.file_path}: {e}")
                     failed_files.append((file_meta.file_path, str(e)))
-        
+
         return all_nodes, all_edges, failed_files
 
 
 def _parse_file_worker(
     repo_id: RepoId,
     file_meta: FileMetadata
-) -> Tuple[List[CodeNode], List[CodeEdge], Optional[str]]:
+) -> tuple[list[CodeNode], list[CodeEdge], str | None]:
     """
     워커 프로세스에서 실행되는 파일 파싱 함수
-    
+
     Note: multiprocessing을 위해 top-level 함수로 정의
-    
+
     Returns:
         (노드 리스트, 엣지 리스트, 에러 메시지 or None)
     """
@@ -438,7 +611,7 @@ def _parse_file_worker(
         parser = create_parser(file_meta.language)
         if parser is None:
             return [], [], f"No parser for {file_meta.language}"
-        
+
         raw_symbols, raw_relations = parser.parse_file({
             "repo_id": repo_id,
             "path": file_meta.file_path,
@@ -446,15 +619,15 @@ def _parse_file_worker(
             "abs_path": file_meta.abs_path,
             "language": file_meta.language
         })
-        
+
         # 파일 읽기
         try:
-            with open(file_meta.abs_path, "r", encoding="utf-8") as f:
+            with open(file_meta.abs_path, encoding="utf-8") as f:
                 file_content = f.read()
-        except Exception as read_error:
+        except Exception:
             file_content = ""
             # 파일 읽기 실패는 계속 진행 (빈 문자열로)
-        
+
         # IR 변환
         from ..graph.ir_builder import IRBuilder
         ir_builder = IRBuilder()
@@ -463,9 +636,9 @@ def _parse_file_worker(
             raw_relations=raw_relations,
             source_code={file_meta.file_path: file_content}
         )
-        
+
         return nodes, edges, None  # 성공
-    
+
     except Exception as e:
         # 에러 정보를 반환 (로깅은 메인 프로세스에서)
         return [], [], str(e)

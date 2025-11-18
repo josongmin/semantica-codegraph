@@ -11,7 +11,7 @@ Semantica 리트리버 성능 측정 및 Cody 비교 도구
 ## 사전 체크
 
 ```bash
-python benchmarks/check.py
+python apps/benchmarks/check.py
 ```
 
 ## 명령어
@@ -25,7 +25,7 @@ python benchmarks/check.py
 
 ## 문서
 
-- `benchmarks/README.md` - 전체 가이드
+- `apps/benchmarks/README.md` - 전체 가이드
 - `.temp/HOW_TO_BENCHMARK.md` - 상세 사용법
 - `.temp/benchmark-quick-guide.md` - 빠른 가이드
 
@@ -48,13 +48,13 @@ semantica index /path/to/repo
 chmod +x benchmark
 
 # 또는 Python으로 직접
-python benchmarks/run.py
+python apps/benchmarks/run.py
 ```
 
 ## 구조
 
 ```
-benchmarks/
+apps/benchmarks/
 ├── run.py              # 메인 실행기
 ├── check.py            # 환경 체크
 ├── compare.py          # 고급 비교
@@ -71,7 +71,7 @@ benchmarks/
 
 ## 즉시 시작
 
-1. `python benchmarks/check.py` - 환경 체크
+1. `python apps/benchmarks/check.py` - 환경 체크
 2. `./benchmark` - 벤치마크 실행
 3. 결과 확인
 

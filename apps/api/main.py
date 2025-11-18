@@ -40,7 +40,7 @@ def health():
 
 
 # 라우터 등록
-from .routes import repos, search, nodes
+from .routes import nodes, repos, search
 
 app.include_router(repos.router, prefix="/api/repos", tags=["repositories"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
@@ -50,7 +50,7 @@ app.include_router(nodes.router, prefix="/api/nodes", tags=["nodes"])
 def main():
     """서버 실행"""
     import uvicorn
-    
+
     uvicorn.run(
         "apps.api.main:app",
         host="0.0.0.0",

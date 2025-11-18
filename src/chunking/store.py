@@ -2,9 +2,8 @@
 
 import json
 import logging
-from typing import List, Optional
 
-import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import execute_batch
 
 from ..core.models import CodeChunk, RepoId
@@ -16,28 +15,55 @@ logger = logging.getLogger(__name__)
 class PostgresChunkStore(ChunkStorePort):
     """
     PostgreSQL 기반 청크 저장소
-    
+
     핵심 기능:
     - Chunk 저장/조회
     - 위치 기반 조회 (Zoekt 매핑에 필수!)
     - Node 기반 조회
     """
 
-    def __init__(self, connection_string: str):
+    def __init__(
+        self,
+        connection_string: str,
+        pool_size: int = 5,
+        pool_max: int = 10
+    ):
         """
         Args:
             connection_string: PostgreSQL 연결 문자열
+            pool_size: 커넥션 풀 최소 크기
+            pool_max: 커넥션 풀 최대 크기
         """
         self.connection_string = connection_string
+
+        # 커넥션 풀 생성
+        self._pool = pool.SimpleConnectionPool(
+            pool_size,
+            pool_max,
+            connection_string
+        )
+        logger.info(f"ChunkStore: Created connection pool (min={pool_size}, max={pool_max})")
+
         self._ensure_tables()
 
     def _get_connection(self):
-        """DB 연결 생성"""
-        return psycopg2.connect(self.connection_string)
+        """DB 연결 풀에서 가져오기"""
+        return self._pool.getconn()
+
+    def _put_connection(self, conn):
+        """DB 연결 풀에 반환"""
+        self._pool.putconn(conn)
+
+    def close(self):
+        """커넥션 풀 종료"""
+        if self._pool:
+            self._pool.closeall()
+            logger.info("ChunkStore: Connection pool closed")
 
     def _ensure_tables(self):
         """테이블 생성"""
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             with conn.cursor() as cur:
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS code_chunks (
@@ -60,26 +86,29 @@ class PostgresChunkStore(ChunkStorePort):
 
                 # Zoekt 매핑에 필수!
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_chunks_location 
+                    CREATE INDEX IF NOT EXISTS idx_chunks_location
                     ON code_chunks(repo_id, file_path, span_start_line, span_end_line)
                 """)
 
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_chunks_node 
+                    CREATE INDEX IF NOT EXISTS idx_chunks_node
                     ON code_chunks(repo_id, node_id)
                 """)
 
                 conn.commit()
+        finally:
+            self._put_connection(conn)
 
         logger.info("Chunk tables ensured")
 
-    def save_chunks(self, chunks: List[CodeChunk]) -> None:
+    def save_chunks(self, chunks: list[CodeChunk]) -> None:
         """청크 저장"""
         if not chunks:
             logger.warning("No chunks to save")
             return
 
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             with conn.cursor() as cur:
                 chunk_data = [
                     (
@@ -117,16 +146,20 @@ class PostgresChunkStore(ChunkStorePort):
                         text = EXCLUDED.text,
                         attrs = EXCLUDED.attrs
                     """,
-                    chunk_data
+                    chunk_data,
+                    page_size=500  # 배치 크기 최적화
                 )
 
                 conn.commit()
+        finally:
+            self._put_connection(conn)
 
         logger.info(f"Saved {len(chunks)} chunks")
 
-    def get_chunk(self, repo_id: RepoId, chunk_id: str) -> Optional[CodeChunk]:
+    def get_chunk(self, repo_id: RepoId, chunk_id: str) -> CodeChunk | None:
         """단일 청크 조회"""
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -142,6 +175,8 @@ class PostgresChunkStore(ChunkStorePort):
                 row = cur.fetchone()
                 if row:
                     return self._row_to_chunk(row)
+        finally:
+            self._put_connection(conn)
 
         return None
 
@@ -149,9 +184,10 @@ class PostgresChunkStore(ChunkStorePort):
         self,
         repo_id: RepoId,
         node_id: str,
-    ) -> List[CodeChunk]:
+    ) -> list[CodeChunk]:
         """노드로 청크 조회"""
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -165,25 +201,28 @@ class PostgresChunkStore(ChunkStorePort):
                 )
 
                 return [self._row_to_chunk(row) for row in cur.fetchall()]
+        finally:
+            self._put_connection(conn)
 
     def find_by_location(
         self,
         repo_id: RepoId,
         file_path: str,
         line: int
-    ) -> Optional[CodeChunk]:
+    ) -> CodeChunk | None:
         """
         위치로 청크 조회 (Zoekt 매핑에 필수!)
-        
+
         Args:
             repo_id: 저장소 ID
             file_path: 파일 경로
             line: 라인 번호 (0-based)
-        
+
         Returns:
             해당 위치를 포함하는 청크 (가장 작은 것)
         """
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -191,11 +230,11 @@ class PostgresChunkStore(ChunkStorePort):
                            span_start_line, span_start_col, span_end_line, span_end_col,
                            language, text, attrs
                     FROM code_chunks
-                    WHERE repo_id = %s 
+                    WHERE repo_id = %s
                       AND file_path = %s
-                      AND span_start_line <= %s 
+                      AND span_start_line <= %s
                       AND span_end_line >= %s
-                    ORDER BY 
+                    ORDER BY
                         (span_end_line - span_start_line) ASC,
                         (span_end_col - span_start_col) ASC
                     LIMIT 1
@@ -206,6 +245,8 @@ class PostgresChunkStore(ChunkStorePort):
                 row = cur.fetchone()
                 if row:
                     return self._row_to_chunk(row)
+        finally:
+            self._put_connection(conn)
 
         return None
 

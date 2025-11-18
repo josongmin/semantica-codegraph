@@ -1,11 +1,9 @@
 """코드 그래프 노드 API"""
 
-from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from src.core.models import RepoId
 from src.core.bootstrap import create_bootstrap
 from src.search.graph.postgres_graph_adapter import PostgresGraphSearch
 
@@ -20,7 +18,7 @@ class NodeResponse(BaseModel):
     kind: str
     language: str
     file_path: str
-    span: List[int]  # [start_line, start_col, end_line, end_col]
+    span: list[int]  # [start_line, start_col, end_line, end_col]
     name: str
     text: str
     attrs: dict
@@ -29,7 +27,7 @@ class NodeResponse(BaseModel):
 class NeighborsResponse(BaseModel):
     """이웃 노드 응답"""
     node: NodeResponse
-    neighbors: List[NodeResponse]
+    neighbors: list[NodeResponse]
     total: int
 
 
@@ -39,10 +37,10 @@ async def get_node(repo_id: str, node_id: str):
     try:
         graph_search = PostgresGraphSearch(bootstrap.graph_store)
         node = graph_search.get_node(repo_id, node_id)
-        
+
         if not node:
             raise HTTPException(status_code=404, detail="Node not found")
-        
+
         return NodeResponse(
             repo_id=node.repo_id,
             id=node.id,
@@ -76,10 +74,10 @@ async def get_node_by_location(
             line=line,
             column=column,
         )
-        
+
         if not node:
             raise HTTPException(status_code=404, detail="Node not found at location")
-        
+
         return NodeResponse(
             repo_id=node.repo_id,
             id=node.id,
@@ -102,17 +100,17 @@ async def get_neighbors(
     repo_id: str,
     node_id: str,
     k: int = Query(1, description="이웃 깊이 (k-hop)"),
-    edge_types: Optional[List[str]] = Query(None, description="엣지 타입 필터"),
+    edge_types: list[str] | None = Query(None, description="엣지 타입 필터"),
 ):
     """노드 이웃 확장"""
     try:
         graph_search = PostgresGraphSearch(bootstrap.graph_store)
-        
+
         # 노드 조회
         node = graph_search.get_node(repo_id, node_id)
         if not node:
             raise HTTPException(status_code=404, detail="Node not found")
-        
+
         # 이웃 확장
         neighbors = graph_search.expand_neighbors(
             repo_id=repo_id,
@@ -120,7 +118,7 @@ async def get_neighbors(
             edge_types=edge_types,
             k=k,
         )
-        
+
         return NeighborsResponse(
             node=NodeResponse(
                 repo_id=node.repo_id,

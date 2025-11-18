@@ -1,9 +1,6 @@
 """IR Builder: RawSymbol/Relation → CodeNode/Edge 변환"""
 
-import hashlib
 import logging
-from pathlib import Path
-from typing import Dict, List, Tuple
 
 from ..core.models import CodeEdge, CodeNode, RawRelation, RawSymbol, RepoId, Span
 
@@ -13,17 +10,17 @@ logger = logging.getLogger(__name__)
 class IRBuilder:
     """
     언어별 파서 출력(Raw)을 언어 독립적인 IR(CodeNode/Edge)로 변환
-    
+
     주요 역할:
     1. RawSymbol → CodeNode 변환
        - 고유 ID 생성
        - 텍스트 추출 (span 기반)
        - attrs 정규화
-    
+
     2. RawRelation → CodeEdge 변환
        - src/dst 심볼 → ID 매핑
        - 관계 타입 정규화
-    
+
     3. 그래프 검증
        - 순환 참조 체크
        - 고아 노드 정리
@@ -38,19 +35,19 @@ class IRBuilder:
 
     def build(
         self,
-        raw_symbols: List[RawSymbol],
-        raw_relations: List[RawRelation],
-        source_code: Dict[str, str] | None = None
-    ) -> Tuple[List[CodeNode], List[CodeEdge]]:
+        raw_symbols: list[RawSymbol],
+        raw_relations: list[RawRelation],
+        source_code: dict[str, str] | None = None
+    ) -> tuple[list[CodeNode], list[CodeEdge]]:
         """
         Raw 데이터를 CodeNode/Edge로 변환
-        
+
         Args:
             raw_symbols: 파서에서 추출한 심볼 리스트
             raw_relations: 파서에서 추출한 관계 리스트
             source_code: 파일별 소스 코드 (span으로 텍스트 추출용)
                         {file_path: source_text}
-        
+
         Returns:
             (CodeNode 리스트, CodeEdge 리스트)
         """
@@ -90,15 +87,15 @@ class IRBuilder:
     def _raw_symbol_to_node(
         self,
         raw: RawSymbol,
-        source_code: Dict[str, str] | None
+        source_code: dict[str, str] | None
     ) -> CodeNode:
         """
         RawSymbol → CodeNode 변환
-        
+
         Args:
             raw: RawSymbol
             source_code: 파일별 소스 코드
-        
+
         Returns:
             CodeNode
         """
@@ -124,21 +121,19 @@ class IRBuilder:
     def _raw_relation_to_edge(
         self,
         raw: RawRelation,
-        symbol_to_id: Dict[Tuple, str]
+        symbol_to_id: dict[tuple, str]
     ) -> CodeEdge | None:
         """
         RawRelation → CodeEdge 변환
-        
+
         Args:
             raw: RawRelation
             symbol_to_id: symbol key → node_id 매핑
-        
+
         Returns:
             CodeEdge (매핑 실패 시 None)
         """
         # src/dst span으로 심볼 찾기
-        src_key = (raw.file_path, raw.src_span)
-        dst_key = (raw.file_path, raw.dst_span)
 
         # attrs에 target이 있으면 우선 사용
         target = raw.attrs.get("target") or raw.attrs.get("target_symbol")
@@ -192,17 +187,17 @@ class IRBuilder:
     def _generate_node_id(self, raw: RawSymbol) -> str:
         """
         고유 Node ID 생성
-        
+
         형식: {repo_id}:{file_path}:{kind}:{name}
-        
+
         예시:
         - myrepo:src/main.py:Function:calculate_total
         - myrepo:src/user.py:Class:User
         - myrepo:src/user.py:Method:User.save
-        
+
         Args:
             raw: RawSymbol
-        
+
         Returns:
             고유 ID
         """
@@ -226,20 +221,20 @@ class IRBuilder:
     def _extract_text(
         self,
         raw: RawSymbol,
-        source_code: Dict[str, str] | None
+        source_code: dict[str, str] | None
     ) -> str:
         """
         Span으로 텍스트 추출
-        
+
         Note:
             Tree-sitter span은 0-based indexing:
             - (0, 0, 0, 5) = 첫 줄 0-5번 컬럼
             - (0, 0, 2, 0) = 0번 줄부터 2번 줄 시작까지
-        
+
         Args:
             raw: RawSymbol
             source_code: 파일별 소스 코드
-        
+
         Returns:
             추출된 텍스트 (실패 시 빈 문자열)
         """
@@ -297,14 +292,14 @@ class IRBuilder:
         repo_id: RepoId,
         file_path: str,
         span: Span,
-        symbol_to_id: Dict[Tuple, str]
+        symbol_to_id: dict[tuple, str]
     ) -> str | None:
         """
         Span으로 node_id 찾기
-        
+
         symbol_to_id의 키 형식: (file_path, name, kind, span)
         주어진 span과 매칭되는 심볼을 찾습니다.
-        
+
         우선순위:
         1. 정확히 일치하는 span
         2. 주어진 span을 포함하는 심볼 (가장 작은 것)
@@ -313,75 +308,72 @@ class IRBuilder:
         def spans_equal(span1: Span, span2: Span) -> bool:
             """두 span이 정확히 일치하는지 확인"""
             return span1 == span2
-        
+
         def span_contains(span1: Span, span2: Span) -> bool:
             """span1이 span2를 포함하는지 확인"""
             s1_start_line, s1_start_col, s1_end_line, s1_end_col = span1
             s2_start_line, s2_start_col, s2_end_line, s2_end_col = span2
-            
+
             if s1_start_line > s2_start_line or s1_end_line < s2_end_line:
                 return False
-            
+
             if s1_start_line == s2_start_line and s1_start_col > s2_start_col:
                 return False
-            
-            if s1_end_line == s2_end_line and s1_end_col < s2_end_col:
-                return False
-            
-            return True
-        
+
+            return not (s1_end_line == s2_end_line and s1_end_col < s2_end_col)
+
         def spans_overlap(span1: Span, span2: Span) -> bool:
             """두 span이 겹치는지 확인"""
             s1_start_line, s1_start_col, s1_end_line, s1_end_col = span1
             s2_start_line, s2_start_col, s2_end_line, s2_end_col = span2
-            
+
             # 라인이 겹치는지 확인
             if s1_end_line < s2_start_line or s2_end_line < s1_start_line:
                 return False
-            
+
             # 같은 라인이면 컬럼도 확인
             if s1_start_line == s1_end_line == s2_start_line == s2_end_line:
                 if s1_end_col < s2_start_col or s2_end_col < s1_start_col:
                     return False
-            
+
             return True
-        
+
         exact_match = None
         containing_candidates = []
         overlapping_candidates = []
-        
+
         for key, node_id in symbol_to_id.items():
             # 키 형식: (file_path, name, kind, span)
             if len(key) == 4 and key[0] == file_path:
                 symbol_span = key[3]
-                
+
                 # 1. 정확히 일치
                 if spans_equal(span, symbol_span):
                     exact_match = node_id
                     break  # 정확히 일치하면 바로 반환
-                
+
                 # 2. 포함 관계 (symbol_span이 span을 포함)
                 if span_contains(symbol_span, span):
                     span_size = (symbol_span[2] - symbol_span[0], symbol_span[3] - symbol_span[1])
                     containing_candidates.append((span_size, node_id))
-                
+
                 # 3. 겹침
                 elif spans_overlap(span, symbol_span):
                     span_size = (symbol_span[2] - symbol_span[0], symbol_span[3] - symbol_span[1])
                     overlapping_candidates.append((span_size, node_id))
-        
+
         # 우선순위에 따라 반환
         if exact_match:
             return exact_match
-        
+
         if containing_candidates:
             containing_candidates.sort(key=lambda x: x[0])
             return containing_candidates[0][1]
-        
+
         if overlapping_candidates:
             overlapping_candidates.sort(key=lambda x: x[0])
             return overlapping_candidates[0][1]
-        
+
         return None
 
     def _find_node_id_by_name(
@@ -389,11 +381,11 @@ class IRBuilder:
         repo_id: RepoId,
         file_path: str,
         name: str,
-        symbol_to_id: Dict[Tuple, str]
+        symbol_to_id: dict[tuple, str]
     ) -> str | None:
         """
         이름으로 node_id 찾기
-        
+
         symbol_to_id의 키 형식: (file_path, name, kind, span)
         주어진 이름과 정확히 일치하는 심볼을 찾습니다.
         """
@@ -405,13 +397,13 @@ class IRBuilder:
                 # 정확히 일치하는 이름 찾기
                 if symbol_name == name:
                     return node_id
-        
+
         return None
 
-    def _make_symbol_key(self, raw: RawSymbol) -> Tuple:
+    def _make_symbol_key(self, raw: RawSymbol) -> tuple:
         """
         심볼 키 생성 (중복 방지)
-        
+
         Returns:
             (file_path, name, kind, span)
         """
@@ -419,20 +411,20 @@ class IRBuilder:
 
     def _validate_graph(
         self,
-        nodes: List[CodeNode],
-        edges: List[CodeEdge]
-    ) -> Tuple[List[CodeNode], List[CodeEdge]]:
+        nodes: list[CodeNode],
+        edges: list[CodeEdge]
+    ) -> tuple[list[CodeNode], list[CodeEdge]]:
         """
         그래프 검증 및 정리
-        
+
         1. 존재하지 않는 노드를 참조하는 엣지 제거
         2. 중복 노드 제거
         3. 중복 엣지 제거
-        
+
         Args:
             nodes: CodeNode 리스트
             edges: CodeEdge 리스트
-        
+
         Returns:
             (정리된 nodes, 정리된 edges)
         """

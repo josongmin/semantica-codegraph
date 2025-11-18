@@ -3,11 +3,10 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Tuple
 
-from tree_sitter import Language, Parser, Node
+from tree_sitter import Language, Node, Parser
 
-from ..core.models import RawRelation, RawSymbol, RepoId, Span
+from ..core.models import RawRelation, RawSymbol, Span
 from ..core.ports import ParserPort
 from .cache import ParseCache
 
@@ -17,12 +16,12 @@ logger = logging.getLogger(__name__)
 class BaseTreeSitterParser(ParserPort, ABC):
     """
     Tree-sitter 기반 파서 베이스 클래스
-    
+
     Tree-sitter는 구문 분석(syntax parsing)을 담당합니다:
     - 정확한 span 정보 제공
     - 빠른 파싱 속도
     - 모든 언어 지원
-    
+
     언어별 파서는 이 클래스를 상속받아 구현합니다.
     """
 
@@ -30,7 +29,7 @@ class BaseTreeSitterParser(ParserPort, ABC):
         self,
         language: Language,
         use_cache: bool = True,
-        cache_root: Optional[Path] = None
+        cache_root: Path | None = None
     ):
         """
         Args:
@@ -43,26 +42,26 @@ class BaseTreeSitterParser(ParserPort, ABC):
         self.use_cache = use_cache
         self.cache = ParseCache(cache_root) if use_cache else None
 
-    def parse_file(self, file_meta: dict) -> Tuple[List[RawSymbol], List[RawRelation]]:
+    def parse_file(self, file_meta: dict) -> tuple[list[RawSymbol], list[RawRelation]]:
         """
         파일 파싱 (캐시 지원)
-        
+
         Args:
             file_meta: 파일 메타데이터
                 - repo_id: RepoId
                 - path: 상대 경로
                 - abs_path: 절대 경로
                 - language: 언어
-        
+
         Returns:
             (RawSymbol 리스트, RawRelation 리스트)
         """
         abs_path = Path(file_meta["abs_path"])
-        
+
         if not abs_path.exists():
             logger.warning(f"File not found: {abs_path}")
             return [], []
-        
+
         # 캐시 확인
         if self.cache:
             cached_result = self.cache.get(
@@ -76,26 +75,26 @@ class BaseTreeSitterParser(ParserPort, ABC):
                     f"{len(symbols)} symbols, {len(relations)} relations"
                 )
                 return symbols, relations
-        
+
         try:
             # 파일 읽기
             with open(abs_path, "rb") as f:
                 source_code = f.read()
-            
+
             # Tree-sitter 파싱
             tree = self.parser.parse(source_code)
-            
+
             if tree.root_node.has_error:
                 logger.warning(f"Parse error in {file_meta['path']}")
                 # 에러가 있어도 부분적으로 파싱된 결과 사용
-            
+
             # 심볼 추출
             symbols = self.extract_symbols(
                 tree.root_node,
                 source_code,
                 file_meta
             )
-            
+
             # 관계 추출
             relations = self.extract_relations(
                 tree.root_node,
@@ -103,7 +102,7 @@ class BaseTreeSitterParser(ParserPort, ABC):
                 file_meta,
                 symbols
             )
-            
+
             # 캐시 저장
             if self.cache:
                 self.cache.save(
@@ -112,14 +111,14 @@ class BaseTreeSitterParser(ParserPort, ABC):
                     symbols=symbols,
                     relations=relations
                 )
-            
+
             logger.debug(
                 f"Parsed {file_meta['path']}: "
                 f"{len(symbols)} symbols, {len(relations)} relations"
             )
-            
+
             return symbols, relations
-            
+
         except Exception as e:
             logger.error(f"Failed to parse {file_meta['path']}: {e}")
             return [], []
@@ -130,15 +129,15 @@ class BaseTreeSitterParser(ParserPort, ABC):
         root: Node,
         source: bytes,
         file_meta: dict
-    ) -> List[RawSymbol]:
+    ) -> list[RawSymbol]:
         """
         심볼 추출 (언어별 구현)
-        
+
         Args:
             root: Tree-sitter 루트 노드
             source: 소스 코드 (bytes)
             file_meta: 파일 메타데이터
-        
+
         Returns:
             RawSymbol 리스트
         """
@@ -150,21 +149,21 @@ class BaseTreeSitterParser(ParserPort, ABC):
         root: Node,
         source: bytes,
         file_meta: dict,
-        symbols: List[RawSymbol]
-    ) -> List[RawRelation]:
+        symbols: list[RawSymbol]
+    ) -> list[RawRelation]:
         """
         관계 추출 (언어별 구현)
-        
+
         Note:
             Tree-sitter는 구문 분석만 하므로 제한적입니다.
             정확한 관계는 Phase 2에서 SCIP로 추가합니다.
-        
+
         Args:
             root: Tree-sitter 루트 노드
             source: 소스 코드 (bytes)
             file_meta: 파일 메타데이터
             symbols: 추출된 심볼 리스트
-        
+
         Returns:
             RawRelation 리스트
         """
@@ -175,10 +174,10 @@ class BaseTreeSitterParser(ParserPort, ABC):
     def _node_to_span(self, node: Node) -> Span:
         """
         Tree-sitter Node → Span 변환
-        
+
         Args:
             node: Tree-sitter 노드
-        
+
         Returns:
             (start_line, start_col, end_line, end_col)
         """
@@ -192,17 +191,17 @@ class BaseTreeSitterParser(ParserPort, ABC):
     def _get_node_text(self, node: Node | None, source: bytes) -> str:
         """
         Node의 텍스트 추출
-        
+
         Args:
             node: Tree-sitter 노드
             source: 소스 코드
-        
+
         Returns:
             노드의 텍스트 (UTF-8 디코딩)
         """
         if node is None:
             return ""
-        
+
         try:
             return source[node.start_byte:node.end_byte].decode("utf-8")
         except UnicodeDecodeError:
@@ -212,7 +211,7 @@ class BaseTreeSitterParser(ParserPort, ABC):
     def _traverse(self, node: Node, callback):
         """
         노드 트리 순회 (DFS)
-        
+
         Args:
             node: 시작 노드
             callback: 각 노드에 적용할 콜백 함수
@@ -224,11 +223,11 @@ class BaseTreeSitterParser(ParserPort, ABC):
     def _find_child_by_type(self, node: Node, child_type: str) -> Node | None:
         """
         특정 타입의 자식 노드 찾기
-        
+
         Args:
             node: 부모 노드
             child_type: 찾을 자식 노드 타입
-        
+
         Returns:
             첫 번째 매칭 노드 (없으면 None)
         """
@@ -237,14 +236,14 @@ class BaseTreeSitterParser(ParserPort, ABC):
                 return child
         return None
 
-    def _find_children_by_type(self, node: Node, child_type: str) -> List[Node]:
+    def _find_children_by_type(self, node: Node, child_type: str) -> list[Node]:
         """
         특정 타입의 모든 자식 노드 찾기
-        
+
         Args:
             node: 부모 노드
             child_type: 찾을 자식 노드 타입
-        
+
         Returns:
             매칭된 노드 리스트
         """

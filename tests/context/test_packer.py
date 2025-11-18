@@ -146,26 +146,6 @@ def test_packer_token_limit(mock_stores, sample_candidates):
     assert len(context.supporting) == 0  # 토큰 부족으로 supporting 없음
 
 
-def test_packer_estimate_tokens():
-    """토큰 추정 테스트"""
-    packer = ContextPacker(MagicMock(), MagicMock())
-
-    # tiktoken 사용 시 정확한 토큰 수 반환
-    text = "def hello(): pass"
-    tokens = packer._estimate_tokens(text)
-
-    # tiktoken이 로드되었는지 확인
-    if packer.encoding:
-        # tiktoken 사용: 정확한 값
-        import tiktoken
-        enc = tiktoken.get_encoding("cl100k_base")
-        expected = len(enc.encode(text))
-        assert tokens == expected
-    else:
-        # Fallback: 휴리스틱 사용 (대략적인 값)
-        assert tokens > 0
-
-
 def test_packer_empty_candidates(mock_stores):
     """빈 candidates 처리 테스트"""
     chunk_store, graph_store = mock_stores

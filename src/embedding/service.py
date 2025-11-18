@@ -1,7 +1,6 @@
 """임베딩 서비스 - 다양한 모델 지원"""
 
 import logging
-from typing import List
 
 from ..core.enums import EmbeddingModel
 from ..core.models import CodeChunk
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 class EmbeddingService:
     """
     임베딩 생성 서비스
-    
+
     지원 모델:
     - Mistral Codestral Embed (코드 특화 최고)
     - OpenAI text-embedding-3-small/large
@@ -24,7 +23,7 @@ class EmbeddingService:
         model: EmbeddingModel,
         api_key: str | None = None,
         api_base: str | None = None,
-        dimension: int | None = None
+        dimension: int | None = None,
     ):
         """
         Args:
@@ -49,14 +48,11 @@ class EmbeddingService:
         elif self.model in (
             EmbeddingModel.OPENAI_3_SMALL,
             EmbeddingModel.OPENAI_3_LARGE,
-            EmbeddingModel.OPENAI_ADA_002
+            EmbeddingModel.OPENAI_ADA_002,
         ):
             # OpenAI API
             self._init_openai()
-        elif self.model in (
-            EmbeddingModel.ALL_MINI_LM_L6_V2,
-            EmbeddingModel.ALL_MPNET_BASE_V2
-        ):
+        elif self.model in (EmbeddingModel.ALL_MINI_LM_L6_V2, EmbeddingModel.ALL_MPNET_BASE_V2):
             # Sentence Transformers (로컬)
             self._init_sentence_transformer()
         elif self.model == EmbeddingModel.CODEBERT_BASE:
@@ -72,6 +68,7 @@ class EmbeddingService:
 
         try:
             from mistralai import Mistral
+
             self.client = Mistral(api_key=self.api_key)
             self.embed_func = self._embed_mistral
             logger.info("Initialized Mistral Codestral Embed")
@@ -85,6 +82,7 @@ class EmbeddingService:
 
         try:
             from openai import OpenAI
+
             self.client = OpenAI(api_key=self.api_key)
             self.embed_func = self._embed_openai
             logger.info(f"Initialized OpenAI {self.model.value}")
@@ -95,6 +93,7 @@ class EmbeddingService:
         """Sentence Transformer 초기화"""
         try:
             from sentence_transformers import SentenceTransformer
+
             self.st_model = SentenceTransformer(self.model.value)
             self.embed_func = self._embed_sentence_transformer
             logger.info(f"Initialized Sentence Transformer {self.model.value}")
@@ -105,6 +104,7 @@ class EmbeddingService:
         """CodeBERT 초기화"""
         try:
             from transformers import AutoModel, AutoTokenizer
+
             self.tokenizer = AutoTokenizer.from_pretrained(self.model.value)
             self.codebert_model = AutoModel.from_pretrained(self.model.value)
             self.embed_func = self._embed_codebert
@@ -112,25 +112,25 @@ class EmbeddingService:
         except ImportError:
             raise ImportError("Please install: pip install transformers torch")
 
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str) -> list[float]:
         """
         단일 텍스트 임베딩
-        
+
         Args:
             text: 임베딩할 텍스트
-        
+
         Returns:
             벡터 (List[float])
         """
         return self.embed_texts([text])[0]
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
         """
         배치 텍스트 임베딩
-        
+
         Args:
             texts: 텍스트 리스트
-        
+
         Returns:
             벡터 리스트
         """
@@ -139,12 +139,12 @@ class EmbeddingService:
 
         return self.embed_func(texts)
 
-    def embed_chunk(self, chunk: CodeChunk) -> List[float]:
+    def embed_chunk(self, chunk: CodeChunk) -> list[float]:
         """단일 청크 임베딩"""
         text = self._prepare_chunk_text(chunk)
         return self.embed_text(text)
 
-    def embed_chunks(self, chunks: List[CodeChunk]) -> List[List[float]]:
+    def embed_chunks(self, chunks: list[CodeChunk]) -> list[list[float]]:
         """배치 청크 임베딩"""
         texts = [self._prepare_chunk_text(chunk) for chunk in chunks]
         return self.embed_texts(texts)
@@ -152,7 +152,7 @@ class EmbeddingService:
     def _prepare_chunk_text(self, chunk: CodeChunk) -> str:
         """
         청크를 임베딩 텍스트로 변환
-        
+
         전략: 코드 + docstring (권장)
         """
         parts = [chunk.text]
@@ -165,20 +165,20 @@ class EmbeddingService:
 
     # === 모델별 임베딩 함수 ===
 
-    def _embed_mistral(self, texts: List[str]) -> List[List[float]]:
+    def _embed_mistral(self, texts: list[str]) -> list[list[float]]:
         """
         Mistral Codestral Embed API 호출
-        
+
         Args:
             texts: 텍스트 리스트
-        
+
         Returns:
             벡터 리스트
         """
         try:
             response = self.client.embeddings.create(
                 model=self.model.value,
-                inputs=texts  # Mistral은 'inputs' 사용
+                inputs=texts,  # Mistral은 'inputs' 사용
             )
 
             vectors = [data.embedding for data in response.data]
@@ -189,13 +189,13 @@ class EmbeddingService:
             logger.error(f"Mistral embedding failed: {e}")
             raise
 
-    def _embed_openai(self, texts: List[str]) -> List[List[float]]:
+    def _embed_openai(self, texts: list[str]) -> list[list[float]]:
         """
         OpenAI API 호출
-        
+
         Args:
             texts: 텍스트 리스트
-        
+
         Returns:
             벡터 리스트
         """
@@ -203,7 +203,7 @@ class EmbeddingService:
             response = self.client.embeddings.create(
                 model=self.model.value,
                 input=texts,  # OpenAI는 'input' 사용
-                dimensions=self.dimension  # 선택적 차원 축소
+                dimensions=self.dimension,  # 선택적 차원 축소
             )
 
             vectors = [data.embedding for data in response.data]
@@ -214,36 +214,33 @@ class EmbeddingService:
             logger.error(f"OpenAI embedding failed: {e}")
             raise
 
-    def _embed_sentence_transformer(self, texts: List[str]) -> List[List[float]]:
+    def _embed_sentence_transformer(self, texts: list[str]) -> list[list[float]]:
         """
         Sentence Transformer (로컬)
-        
+
         Args:
             texts: 텍스트 리스트
-        
+
         Returns:
             벡터 리스트
         """
         try:
-            vectors = self.st_model.encode(
-                texts,
-                show_progress_bar=False,
-                convert_to_numpy=True
-            )
+            vectors = self.st_model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
             logger.debug(f"Sentence Transformer embedded {len(texts)} texts")
-            return vectors.tolist()
+            result: list[list[float]] = vectors.tolist()
+            return result
 
         except Exception as e:
             logger.error(f"Sentence Transformer embedding failed: {e}")
             raise
 
-    def _embed_codebert(self, texts: List[str]) -> List[List[float]]:
+    def _embed_codebert(self, texts: list[str]) -> list[list[float]]:
         """
         CodeBERT (로컬)
-        
+
         Args:
             texts: 텍스트 리스트
-        
+
         Returns:
             벡터 리스트
         """
@@ -254,11 +251,7 @@ class EmbeddingService:
             for text in texts:
                 # 토큰화
                 inputs = self.tokenizer(
-                    text,
-                    return_tensors="pt",
-                    truncation=True,
-                    max_length=512,
-                    padding=True
+                    text, return_tensors="pt", truncation=True, max_length=512, padding=True
                 )
 
                 # 임베딩 생성
@@ -278,7 +271,7 @@ class EmbeddingService:
     def get_dimension(self) -> int:
         """
         모델의 벡터 차원 반환
-        
+
         Returns:
             벡터 차원
         """
@@ -298,4 +291,3 @@ class EmbeddingService:
         }
 
         return dimension_map.get(self.model, 768)
-

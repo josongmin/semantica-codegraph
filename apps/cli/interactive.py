@@ -1,16 +1,17 @@
 """대화형 CLI 메인 로직"""
 
 import sys
+import threading
+import time
 from pathlib import Path
-from typing import Optional
 
-from rich.console import Console
-from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.prompt import Confirm, Prompt
 
 from src.core.bootstrap import create_bootstrap
 from src.core.models import LocationContext
-from src.search.retriever.hybrid_retriever import HybridRetriever
 from src.search.graph.postgres_graph_adapter import PostgresGraphSearch
+from src.search.retriever.hybrid_retriever import HybridRetriever
 from src.search.semantic.pgvector_adapter import PgVectorSemanticSearch
 
 from .tui import (
@@ -19,7 +20,6 @@ from .tui import (
     select_repo_from_list,
     show_banner,
     show_menu,
-    show_indexing_progress,
     show_search_results,
 )
 
@@ -28,36 +28,25 @@ bootstrap = create_bootstrap()
 
 def handle_index_repo():
     """저장소 인덱싱 처리"""
-    import threading
-    import time
-    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
-    
-    console.print("\n[bold cyan]저장소 선택 후 (재)인덱싱[/bold cyan]\n")
-    
-    # 디렉토리 선택
+    console.print("\n[bold cyan]저장소 인덱싱[/bold cyan]\n")
+
     repo_path = select_directory()
     if not repo_path:
         return
-    
-    # 저장소 이름 입력
-    from rich.prompt import Prompt
+
     default_name = Path(repo_path).name
-    repo_name = Prompt.ask(f"\n저장소 이름", default=default_name)
-    
-    # 저장소 ID 입력 (선택적)
+    repo_name = Prompt.ask("저장소 이름", default=default_name)
+
     repo_id = Prompt.ask("저장소 ID (자동 생성: Enter)", default="")
     if not repo_id:
         repo_id = None
-    
-    # 인덱싱 시작
-    console.print(f"\n[bold yellow]인덱싱 시작[/bold yellow]")
+
+    console.print("\n[bold yellow]인덱싱 시작[/bold yellow]")
     console.print(f"경로: {repo_path}")
     console.print(f"이름: {repo_name}\n")
-    
-    # 인덱싱 결과를 저장할 변수
+
     result_container = {"result": None, "error": None, "done": False}
-    
-    # 백그라운드에서 인덱싱 실행
+
     def run_indexing():
         try:
             result = bootstrap.pipeline.index_repository(
@@ -70,15 +59,12 @@ def handle_index_repo():
             result_container["error"] = e
         finally:
             result_container["done"] = True
-    
-    # 인덱싱 스레드 시작
+
     indexing_thread = threading.Thread(target=run_indexing, daemon=True)
     indexing_thread.start()
-    
-    # 실제 repo_id 얻기 (자동 생성된 경우)
+
     actual_repo_id = repo_id if repo_id else Path(repo_path).resolve().name
-    
-    # 프로그레스 바 표시
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[bold blue]{task.description}"),
@@ -90,21 +76,17 @@ def handle_index_repo():
         transient=False,
     ) as progress:
         task = progress.add_task("[cyan]인덱싱 중...", total=100)
-        
+
         last_progress = 0.0
         while not result_container["done"]:
             try:
-                # 저장소 상태 조회
                 repo = bootstrap.repo_store.get(actual_repo_id)
                 if repo and repo.indexing_progress is not None:
                     current_progress = repo.indexing_progress * 100
-                    
-                    # 진행률이 변경되었을 때만 업데이트
                     if abs(current_progress - last_progress) > 0.1:
                         progress.update(task, completed=current_progress)
                         last_progress = current_progress
-                        
-                        # 단계별 설명 업데이트 (색상과 함께)
+
                         if current_progress < 50:
                             progress.update(task, description="[cyan]파일 파싱 중...")
                         elif current_progress < 70:
@@ -113,21 +95,23 @@ def handle_index_repo():
                             progress.update(task, description="[magenta]임베딩 생성 중...")
             except Exception:
                 pass
-            
+
             time.sleep(0.1)
-        
-        # 완료
+
         progress.update(task, completed=100, description="[bold green]완료!")
-    
-    # 결과 표시
+
     if result_container["error"]:
-        console.print(f"\n[bold red]인덱싱 실패[/bold red]")
-        console.print(f"[red]{str(result_container['error'])}[/red]")
-        console.print_exception()
+        console.print("\n[bold red]인덱싱 실패[/bold red]")
+        error = result_container["error"]
+        console.print(f"[red]{str(error)}[/red]")
+        if isinstance(error, Exception):
+            import traceback
+            console.print("[dim]Traceback:[/dim]")
+            console.print(f"[dim]{''.join(traceback.format_exception(type(error), error, error.__traceback__))}[/dim]")
     elif result_container["result"]:
         result = result_container["result"]
         duration = result.duration_seconds
-        
+
         console.print("\n[bold green]인덱싱 완료![/bold green]")
         console.print(f"  저장소 ID: [cyan]{result.repo_id}[/cyan]")
         console.print(f"  파일: [green]{result.total_files}개[/green]")
@@ -140,8 +124,7 @@ def handle_index_repo():
 def handle_search():
     """코드 검색 처리"""
     console.print("\n[bold cyan]코드 검색[/bold cyan]\n")
-    
-    # 저장소 목록 가져오기
+
     try:
         repos = bootstrap.repo_store.list_all()
         repo_list = [
@@ -156,30 +139,25 @@ def handle_search():
     except Exception as e:
         console.print(f"[red]저장소 목록 조회 실패: {e}[/red]")
         return
-    
-    # 저장소 선택
+
     repo_id = select_repo_from_list(repo_list)
     if not repo_id:
         return
-    
-    # 검색 쿼리 입력
-    from rich.prompt import Prompt, Confirm
+
     query = Prompt.ask("\n검색 쿼리")
     if not query:
         console.print("[yellow]검색 쿼리를 입력해주세요.[/yellow]")
         return
-    
-    # 검색 옵션
+
     try:
         limit_str = Prompt.ask("결과 개수", default="20")
         limit = int(limit_str)
     except ValueError:
         limit = 20
-    
-    # 위치 컨텍스트 (선택적)
+
     use_location = Confirm.ask("위치 컨텍스트 사용?", default=False)
     location_ctx = None
-    
+
     if use_location:
         file_path = Prompt.ask("파일 경로")
         if file_path:
@@ -196,37 +174,32 @@ def handle_search():
                 )
             except ValueError:
                 console.print("[yellow]잘못된 라인/컬럼 번호입니다.[/yellow]")
-    
-    # 검색 실행
-    console.print(f"\n[bold yellow]검색 중...[/bold yellow]")
-    
+
+    console.print("\n[bold yellow]검색 중...[/bold yellow]")
+
     try:
-        # HybridRetriever 생성
         graph_search = PostgresGraphSearch(bootstrap.graph_store)
         semantic_search = PgVectorSemanticSearch(
             embedding_service=bootstrap.embedding_service,
             embedding_store=bootstrap.embedding_store,
             chunk_store=bootstrap.chunk_store,
         )
-        
+
         retriever = HybridRetriever(
             lexical_search=bootstrap.lexical_search,
             semantic_search=semantic_search,
             graph_search=graph_search,
         )
-        
-        # 검색 실행
+
         candidates = retriever.retrieve(
             repo_id=repo_id,
             query=query,
             k=limit,
             location_ctx=location_ctx,
         )
-        
-        # 결과 변환
+
         results = []
         for candidate in candidates:
-            # 청크 조회
             chunk = bootstrap.chunk_store.get_chunk(repo_id, candidate.chunk_id)
             if chunk:
                 results.append({
@@ -234,14 +207,13 @@ def handle_search():
                     "file_path": candidate.file_path,
                     "span": list(candidate.span),
                     "score": candidate.features.get("total_score", 0.0),
-                    "text": chunk.text[:200],  # 최대 200자
+                    "text": chunk.text[:200],
                 })
-        
-        # 결과 표시
+
         show_search_results(results, query)
-        
+
     except Exception as e:
-        console.print(f"\n[bold red]검색 실패[/bold red]")
+        console.print("\n[bold red]검색 실패[/bold red]")
         console.print(f"[red]{str(e)}[/red]")
         console.print_exception()
 
@@ -249,7 +221,7 @@ def handle_search():
 def handle_list_repos():
     """저장소 목록 표시"""
     console.print("\n[bold cyan]저장소 목록[/bold cyan]\n")
-    
+
     try:
         repos = bootstrap.repo_store.list_all()
         repo_list = [
@@ -263,9 +235,9 @@ def handle_list_repos():
             }
             for repo in repos
         ]
-        
+
         select_repo_from_list(repo_list)
-        
+
     except Exception as e:
         console.print(f"[red]저장소 목록 조회 실패: {e}[/red]")
         console.print_exception()
@@ -274,8 +246,7 @@ def handle_list_repos():
 def handle_delete_repo():
     """저장소 삭제 처리"""
     console.print("\n[bold red]저장소 삭제[/bold red]\n")
-    
-    # 저장소 목록 가져오기
+
     try:
         repos = bootstrap.repo_store.list_all()
         repo_list = [
@@ -290,48 +261,50 @@ def handle_delete_repo():
     except Exception as e:
         console.print(f"[red]저장소 목록 조회 실패: {e}[/red]")
         return
-    
-    # 저장소 선택
+
     repo_id = select_repo_from_list(repo_list)
     if not repo_id:
         return
-    
-    # 확인
-    from rich.prompt import Confirm
-    if not Confirm.ask(f"\n[bold red]정말 삭제하시겠습니까?[/bold red]", default=False):
+
+    if not Confirm.ask("\n[bold red]정말 삭제하시겠습니까?[/bold red]", default=False):
         console.print("[yellow]취소되었습니다.[/yellow]")
         return
-    
-    # 삭제 실행
+
     try:
         bootstrap.repo_store.delete(repo_id)
         bootstrap.graph_store.delete_repo(repo_id)
-        console.print(f"\n[bold green]삭제 완료[/bold green]")
+        console.print("\n[bold green]삭제 완료[/bold green]")
     except Exception as e:
-        console.print(f"\n[bold red]삭제 실패[/bold red]")
+        console.print("\n[bold red]삭제 실패[/bold red]")
         console.print(f"[red]{str(e)}[/red]")
         console.print_exception()
 
 
 def run_interactive():
     """대화형 CLI 실행"""
-    # 랜딩 페이지 표시
     show_banner()
-    
+
     try:
-        # Bootstrap 초기화 확인
         _ = bootstrap
     except Exception as e:
-        console.print(f"[bold red]초기화 실패[/bold red]")
+        console.print("[bold red]초기화 실패[/bold red]")
         console.print(f"[red]{str(e)}[/red]")
         console.print("\n환경변수를 확인해주세요.")
         sys.exit(1)
-    
-    # 메인 루프
+
+    commands = [
+        {"cmd": "index", "key": "1", "desc": "저장소 인덱싱"},
+        {"cmd": "search", "key": "2", "desc": "코드 검색"},
+        {"cmd": "list", "key": "3", "desc": "저장소 목록"},
+        {"cmd": "delete", "key": "4", "desc": "저장소 삭제"},
+        {"cmd": "help", "key": "h", "desc": "도움말"},
+        {"cmd": "quit", "key": "q", "desc": "종료"},
+    ]
+
     while True:
         try:
-            choice = show_menu()
-            
+            choice = show_menu(commands)
+
             if choice == "1":
                 handle_index_repo()
             elif choice == "2":
@@ -345,18 +318,15 @@ def run_interactive():
                 break
             else:
                 console.print("[yellow]잘못된 선택입니다.[/yellow]")
-            
-            # 다음 작업을 위해 잠시 대기
+
             if choice != "q":
-                from rich.prompt import Prompt
                 Prompt.ask("\n[dim]계속하려면 Enter를 누르세요...[/dim]", default="")
-        
+
         except KeyboardInterrupt:
             console.print("\n\n[yellow]종료합니다.[/yellow]")
             break
-        except Exception as e:
-            console.print(f"\n[bold red]오류 발생[/bold red]")
+        except Exception:
+            console.print("\n[bold red]오류 발생[/bold red]")
             console.print_exception()
-            from rich.prompt import Prompt
             Prompt.ask("\n[dim]계속하려면 Enter를 누르세요...[/dim]", default="")
 

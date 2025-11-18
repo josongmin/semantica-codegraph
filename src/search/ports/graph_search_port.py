@@ -1,6 +1,6 @@
 """Graph Search Port (코드 그래프 탐색 기반 검색)"""
 
-from typing import List, Optional, Protocol
+from typing import Protocol
 
 from ...core.models import CodeNode, RepoId
 
@@ -8,7 +8,7 @@ from ...core.models import CodeNode, RepoId
 class GraphSearchPort(Protocol):
     """코드 그래프 탐색 기반 검색 포트"""
 
-    def get_node(self, repo_id: RepoId, node_id: str) -> Optional[CodeNode]:
+    def get_node(self, repo_id: RepoId, node_id: str) -> CodeNode | None:
         """노드 조회"""
         ...
 
@@ -18,7 +18,7 @@ class GraphSearchPort(Protocol):
         file_path: str,
         line: int,
         column: int = 0,
-    ) -> Optional[CodeNode]:
+    ) -> CodeNode | None:
         """위치로 노드 조회"""
         ...
 
@@ -26,9 +26,9 @@ class GraphSearchPort(Protocol):
         self,
         repo_id: RepoId,
         node_id: str,
-        edge_types: Optional[List[str]] = None,
+        edge_types: list[str] | None = None,
         k: int = 1,
-    ) -> List[CodeNode]:
+    ) -> list[CodeNode]:
         """노드 이웃 확장 (k-hop)"""
         ...
 

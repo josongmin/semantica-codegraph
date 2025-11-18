@@ -2,9 +2,7 @@
 
 import json
 import logging
-from typing import List, Optional
 
-import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import execute_batch
 
@@ -17,11 +15,11 @@ logger = logging.getLogger(__name__)
 class PostgresGraphStore(GraphStorePort):
     """
     PostgreSQL 기반 코드 그래프 저장소
-    
+
     테이블 구조:
     - code_nodes: 노드 저장
     - code_edges: 엣지 저장
-    
+
     인덱스:
     - (repo_id, id): 노드 조회
     - (repo_id, file_path, kind): 파일별 노드 조회
@@ -42,7 +40,7 @@ class PostgresGraphStore(GraphStorePort):
             pool_max: 커넥션 풀 최대 크기
         """
         self.connection_string = connection_string
-        
+
         # 커넥션 풀 생성
         self._pool = pool.SimpleConnectionPool(
             pool_size,
@@ -50,17 +48,17 @@ class PostgresGraphStore(GraphStorePort):
             connection_string
         )
         logger.info(f"Created connection pool: min={pool_size}, max={pool_max}")
-        
+
         self._ensure_tables()
 
     def _get_connection(self):
         """DB 연결 풀에서 가져오기"""
         return self._pool.getconn()
-    
+
     def _put_connection(self, conn):
         """DB 연결 풀에 반환"""
         self._pool.putconn(conn)
-    
+
     def close(self):
         """커넥션 풀 종료"""
         if self._pool:
@@ -70,7 +68,7 @@ class PostgresGraphStore(GraphStorePort):
     def _ensure_tables(self):
         """
         테이블 생성 (없으면)
-        
+
         Note: 전체 스키마는 migrations/001_init_schema.sql 참조
               여기서는 최소한만 생성
         """
@@ -79,7 +77,7 @@ class PostgresGraphStore(GraphStorePort):
             with conn.cursor() as cur:
                 # 스키마 파일 실행하는 게 더 나음
                 # 여기서는 기본 테이블만 생성
-                
+
                 # repo_metadata (최소)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS repo_metadata (
@@ -89,7 +87,7 @@ class PostgresGraphStore(GraphStorePort):
                         created_at TIMESTAMP DEFAULT NOW()
                     )
                 """)
-                
+
                 # code_nodes
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS code_nodes (
@@ -125,27 +123,27 @@ class PostgresGraphStore(GraphStorePort):
 
                 # 인덱스
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_nodes_file_path 
+                    CREATE INDEX IF NOT EXISTS idx_nodes_file_path
                     ON code_nodes(repo_id, file_path)
                 """)
 
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_nodes_location 
+                    CREATE INDEX IF NOT EXISTS idx_nodes_location
                     ON code_nodes(repo_id, file_path, span_start_line, span_end_line)
                 """)
 
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_nodes_name 
+                    CREATE INDEX IF NOT EXISTS idx_nodes_name
                     ON code_nodes(repo_id, name)
                 """)
 
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_edges_src 
+                    CREATE INDEX IF NOT EXISTS idx_edges_src
                     ON code_edges(repo_id, src_id)
                 """)
 
                 cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_edges_dst 
+                    CREATE INDEX IF NOT EXISTS idx_edges_dst
                     ON code_edges(repo_id, dst_id)
                 """)
 
@@ -155,10 +153,10 @@ class PostgresGraphStore(GraphStorePort):
 
         logger.info("Database tables ensured")
 
-    def save_graph(self, nodes: List[CodeNode], edges: List[CodeEdge]) -> None:
+    def save_graph(self, nodes: list[CodeNode], edges: list[CodeEdge]) -> None:
         """
         그래프 저장
-        
+
         Args:
             nodes: CodeNode 리스트
             edges: CodeEdge 리스트
@@ -209,7 +207,8 @@ class PostgresGraphStore(GraphStorePort):
                         text = EXCLUDED.text,
                         attrs = EXCLUDED.attrs
                     """,
-                    node_data
+                    node_data,
+                    page_size=500  # 배치 크기 최적화
                 )
 
                 logger.debug(f"Saved {len(nodes)} nodes")
@@ -236,7 +235,8 @@ class PostgresGraphStore(GraphStorePort):
                         ON CONFLICT (repo_id, src_id, dst_id, type) DO UPDATE SET
                             attrs = EXCLUDED.attrs
                         """,
-                        edge_data
+                        edge_data,
+                        page_size=500  # 배치 크기 최적화
                     )
 
                     logger.debug(f"Saved {len(edges)} edges")
@@ -247,7 +247,7 @@ class PostgresGraphStore(GraphStorePort):
 
         logger.info(f"Graph saved: {len(nodes)} nodes, {len(edges)} edges")
 
-    def get_node(self, repo_id: RepoId, node_id: str) -> Optional[CodeNode]:
+    def get_node(self, repo_id: RepoId, node_id: str) -> CodeNode | None:
         """단일 노드 조회"""
         conn = self._get_connection()
         try:
@@ -277,7 +277,7 @@ class PostgresGraphStore(GraphStorePort):
         file_path: str,
         line: int,
         column: int = 0,
-    ) -> Optional[CodeNode]:
+    ) -> CodeNode | None:
         """위치로 노드 조회"""
         conn = self._get_connection()
         try:
@@ -288,11 +288,11 @@ class PostgresGraphStore(GraphStorePort):
                            span_start_line, span_start_col, span_end_line, span_end_col,
                            name, text, attrs
                     FROM code_nodes
-                    WHERE repo_id = %s 
+                    WHERE repo_id = %s
                       AND file_path = %s
-                      AND span_start_line <= %s 
+                      AND span_start_line <= %s
                       AND span_end_line >= %s
-                    ORDER BY 
+                    ORDER BY
                         (span_end_line - span_start_line) ASC,
                         (span_end_col - span_start_col) ASC
                     LIMIT 1
@@ -312,18 +312,18 @@ class PostgresGraphStore(GraphStorePort):
         self,
         repo_id: RepoId,
         node_id: str,
-        edge_types: Optional[List[str]] = None,
+        edge_types: list[str] | None = None,
         k: int = 1,
-    ) -> List[CodeNode]:
+    ) -> list[CodeNode]:
         """
         이웃 노드 조회 (k-hop) - N+1 쿼리 최적화 적용
-        
+
         Args:
             repo_id: 저장소 ID
             node_id: 시작 노드 ID
             edge_types: 필터할 엣지 타입 (None이면 전체)
             k: hop 수
-        
+
         Returns:
             이웃 노드 리스트
         """
@@ -347,7 +347,7 @@ class PostgresGraphStore(GraphStorePort):
                         cur.execute(
                             """
                             SELECT dst_id FROM code_edges
-                            WHERE repo_id = %s 
+                            WHERE repo_id = %s
                               AND src_id = ANY(%s)
                               AND type = ANY(%s)
                             """,
@@ -398,15 +398,15 @@ class PostgresGraphStore(GraphStorePort):
     def list_nodes(
         self,
         repo_id: RepoId,
-        kinds: Optional[List[str]] = None,
-    ) -> List[CodeNode]:
+        kinds: list[str] | None = None,
+    ) -> list[CodeNode]:
         """
         저장소의 모든 노드 조회
-        
+
         Args:
             repo_id: 저장소 ID
             kinds: 필터할 노드 종류 (None이면 전체)
-        
+
         Returns:
             CodeNode 리스트
         """
@@ -437,12 +437,12 @@ class PostgresGraphStore(GraphStorePort):
                         """,
                         (repo_id,)
                     )
-                
+
                 rows = cur.fetchall()
                 nodes = [self._row_to_node(row) for row in rows]
         finally:
             self._put_connection(conn)
-        
+
         logger.debug(f"Listed {len(nodes)} nodes for repo {repo_id}")
         return nodes
 
