@@ -3,8 +3,8 @@ from typing import Any
 
 from meilisearch import Client
 
-from ...core.models import ChunkResult, CodeChunk, RepoId
-from ..ports.lexical_search_port import LexicalSearchPort
+from ....core.models import ChunkResult, CodeChunk, RepoId
+from ...ports.lexical_search_port import LexicalSearchPort
 
 try:
     from meilisearch.errors import MeilisearchApiError

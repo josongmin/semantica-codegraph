@@ -2,10 +2,10 @@
 
 import logging
 
-from ...core.models import ChunkResult, RepoId
-from ...core.ports import EmbeddingStorePort
-from ...embedding.service import EmbeddingService
-from ..ports.semantic_search_port import SemanticSearchPort
+from ....core.models import ChunkResult, RepoId
+from ....core.ports import EmbeddingStorePort
+from ....embedding.service import EmbeddingService
+from ...ports.semantic_search_port import SemanticSearchPort
 
 logger = logging.getLogger(__name__)
 

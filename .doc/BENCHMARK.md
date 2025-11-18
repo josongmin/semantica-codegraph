@@ -25,9 +25,9 @@ python apps/benchmarks/check.py
 
 ## 문서
 
-- `apps/benchmarks/README.md` - 전체 가이드
-- `.temp/HOW_TO_BENCHMARK.md` - 상세 사용법
-- `.temp/benchmark-quick-guide.md` - 빠른 가이드
+- `.doc/benchmarks-guide.md` - 전체 가이드
+- `.doc/HOW_TO_BENCHMARK.md` - 상세 사용법
+- `.doc/benchmark-quick-guide.md` - 빠른 가이드
 
 ## 문제 해결
 

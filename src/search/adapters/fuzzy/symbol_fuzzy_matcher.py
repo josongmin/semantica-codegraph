@@ -6,10 +6,10 @@ from functools import lru_cache
 
 from rapidfuzz import fuzz, process
 
-from ...core.config import Config
-from ...core.models import RepoId
-from ...core.ports import GraphStorePort
-from ..ports.fuzzy_search_port import FuzzyMatch, FuzzySearchPort
+from ....core.config import Config
+from ....core.models import RepoId
+from ....core.ports import GraphStorePort
+from ...ports.fuzzy_search_port import FuzzyMatch, FuzzySearchPort
 
 logger = logging.getLogger(__name__)
 

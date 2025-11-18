@@ -25,15 +25,20 @@ def config():
 
 
 @pytest.fixture
-def graph_store(config):
-    """테스트용 그래프 저장소"""
-    conn_str = (
+def conn_str(config):
+    """테스트용 연결 문자열"""
+    return (
         f"host={config.postgres_host} "
         f"port={config.postgres_port} "
         f"user={config.postgres_user} "
         f"password={config.postgres_password} "
         f"dbname={config.postgres_db}"
     )
+
+
+@pytest.fixture
+def graph_store(conn_str):
+    """테스트용 그래프 저장소"""
     return PostgresGraphStore(conn_str)
 
 
@@ -100,8 +105,10 @@ def sample_nodes(sample_repo_id):
     ]
 
 
-def test_exact_match(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes):
+def test_exact_match(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes, conn_str, ensure_test_repo):
     """정확히 일치하는 심볼 검색"""
+    # repo_metadata 먼저 생성
+    ensure_test_repo(conn_str, sample_repo_id)
     # 샘플 노드 저장
     graph_store.save_graph(sample_nodes, [])
 
@@ -122,8 +129,10 @@ def test_exact_match(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes):
     assert results[0].kind == "Function"
 
 
-def test_fuzzy_match_typo(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes):
+def test_fuzzy_match_typo(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes, conn_str, ensure_test_repo):
     """오타가 있는 경우 퍼지 매칭"""
+    # repo_metadata 먼저 생성
+    ensure_test_repo(conn_str, sample_repo_id)
     # 샘플 노드 저장
     graph_store.save_graph(sample_nodes, [])
     fuzzy_matcher.refresh_cache(sample_repo_id)
@@ -141,8 +150,10 @@ def test_fuzzy_match_typo(fuzzy_matcher, graph_store, sample_repo_id, sample_nod
     assert any(r.matched_text == "UserService" for r in results)
 
 
-def test_fuzzy_match_case_insensitive(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes):
+def test_fuzzy_match_case_insensitive(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes, conn_str, ensure_test_repo):
     """대소문자 무시"""
+    # repo_metadata 먼저 생성
+    ensure_test_repo(conn_str, sample_repo_id)
     graph_store.save_graph(sample_nodes, [])
     fuzzy_matcher.refresh_cache(sample_repo_id)
 
@@ -158,8 +169,10 @@ def test_fuzzy_match_case_insensitive(fuzzy_matcher, graph_store, sample_repo_id
     assert any(r.matched_text == "UserService" for r in results)
 
 
-def test_fuzzy_match_abbreviation(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes):
+def test_fuzzy_match_abbreviation(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes, conn_str, ensure_test_repo):
     """축약형 검색"""
+    # repo_metadata 먼저 생성
+    ensure_test_repo(conn_str, sample_repo_id)
     graph_store.save_graph(sample_nodes, [])
     fuzzy_matcher.refresh_cache(sample_repo_id)
 
@@ -175,8 +188,10 @@ def test_fuzzy_match_abbreviation(fuzzy_matcher, graph_store, sample_repo_id, sa
     assert len(results) >= 0  # 찾을 수도 있고 못 찾을 수도 있음
 
 
-def test_kind_filter(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes):
+def test_kind_filter(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes, conn_str, ensure_test_repo):
     """심볼 종류 필터링"""
+    # repo_metadata 먼저 생성
+    ensure_test_repo(conn_str, sample_repo_id)
     graph_store.save_graph(sample_nodes, [])
     fuzzy_matcher.refresh_cache(sample_repo_id)
 
@@ -193,8 +208,10 @@ def test_kind_filter(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes):
     assert all(r.kind == "Function" for r in results)
 
 
-def test_threshold_filter(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes):
+def test_threshold_filter(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes, conn_str, ensure_test_repo):
     """임계값 필터링"""
+    # repo_metadata 먼저 생성
+    ensure_test_repo(conn_str, sample_repo_id)
     graph_store.save_graph(sample_nodes, [])
     fuzzy_matcher.refresh_cache(sample_repo_id)
 

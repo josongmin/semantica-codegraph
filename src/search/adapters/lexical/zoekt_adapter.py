@@ -7,9 +7,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urljoin
 from urllib.request import Request, urlopen
 
-from ...core.models import ChunkResult, CodeChunk, RepoId
-from ...core.ports import ChunkStorePort
-from ..ports.lexical_search_port import LexicalSearchPort
+from ....core.models import ChunkResult, CodeChunk, RepoId
+from ....core.ports import ChunkStorePort
+from ...ports.lexical_search_port import LexicalSearchPort
 
 logger = logging.getLogger(__name__)
 

@@ -2,9 +2,9 @@
 
 import logging
 
-from ...core.models import CodeNode, RepoId
-from ...core.ports import GraphStorePort
-from ..ports.graph_search_port import GraphSearchPort
+from ....core.models import CodeNode, RepoId
+from ....core.ports import GraphStorePort
+from ...ports.graph_search_port import GraphSearchPort
 
 logger = logging.getLogger(__name__)
 

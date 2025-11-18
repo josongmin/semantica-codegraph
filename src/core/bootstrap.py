@@ -3,8 +3,8 @@
 
 from meilisearch import Client
 
-from ..search.lexical.meili_adapter import MeiliSearchAdapter
-from ..search.lexical.zoekt_adapter import ZoektAdapter
+from ..search.adapters.lexical.meili_adapter import MeiliSearchAdapter
+from ..search.adapters.lexical.zoekt_adapter import ZoektAdapter
 from ..search.ports.lexical_search_port import LexicalSearchPort
 from .config import Config
 from .enums import LexicalSearchBackend
@@ -178,7 +178,7 @@ class Bootstrap:
     def semantic_search(self):
         """의미론적 검색"""
         if self._semantic_search is None:
-            from ..search.semantic.pgvector_adapter import PgVectorSemanticSearch
+            from ..search.adapters.semantic.pgvector_adapter import PgVectorSemanticSearch
             self._semantic_search = PgVectorSemanticSearch(
                 embedding_service=self.embedding_service,
                 embedding_store=self.embedding_store
@@ -189,7 +189,7 @@ class Bootstrap:
     def graph_search(self):
         """그래프 검색"""
         if self._graph_search is None:
-            from ..search.graph.postgres_graph_adapter import PostgresGraphSearch
+            from ..search.adapters.graph.postgres_graph_adapter import PostgresGraphSearch
             self._graph_search = PostgresGraphSearch(
                 graph_store=self.graph_store
             )
@@ -199,7 +199,7 @@ class Bootstrap:
     def fuzzy_search(self):
         """퍼지 검색"""
         if self._fuzzy_search is None:
-            from ..search.fuzzy.symbol_fuzzy_matcher import SymbolFuzzyMatcher
+            from ..search.adapters.fuzzy.symbol_fuzzy_matcher import SymbolFuzzyMatcher
             self._fuzzy_search = SymbolFuzzyMatcher(
                 graph_store=self.graph_store,
                 config=self.config
