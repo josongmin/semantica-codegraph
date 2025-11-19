@@ -289,12 +289,14 @@ class IndexingPipeline:
                 self.chunk_store.save_chunks(chunks)
                 logger.info("Saved chunks to database")
             
-            # 8-1. Chunk Tagging (청크 메타데이터 태깅)
-            logger.info("[Profiling] Chunk tagging 시작...")
+            # 8-1. Chunk Tagging + search_text 생성
+            logger.info("[Profiling] Chunk tagging 및 search_text 생성 시작...")
             try:
                 from ..chunking.chunk_tagger import ChunkTagger
+                from ..chunking.search_text_builder import SearchTextBuilder
                 
                 chunk_tagger = ChunkTagger()
+                search_text_builder = SearchTextBuilder()
                 metadata_updates = []
                 
                 # 파일별로 프로파일 매핑
@@ -302,7 +304,17 @@ class IndexingPipeline:
                 
                 for chunk in chunks:
                     file_profile = file_profile_map.get(chunk.file_path)
+                    
+                    # 1. 메타데이터 태깅
                     chunk_metadata = chunk_tagger.tag_chunk(chunk.text, file_profile)
+                    
+                    # 2. search_text 생성
+                    search_text = search_text_builder.build(chunk, file_profile, chunk_metadata)
+                    
+                    # 3. chunk.attrs에 추가 (나중에 embedding/lexical에서 사용)
+                    chunk.attrs["search_text"] = search_text
+                    chunk.attrs["metadata"] = chunk_metadata
+                    
                     metadata_updates.append((repo_id, chunk.id, chunk_metadata))
                 
                 # 배치 업데이트
@@ -310,8 +322,9 @@ class IndexingPipeline:
                     self.chunk_store.update_chunk_metadata_batch(metadata_updates)
                     api_chunks = sum(1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk"))
                     logger.info(f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)")
+                    logger.info(f"[Profiling] search_text 생성 완료 ({len(chunks)}개 chunk)")
             except Exception as e:
-                logger.warning(f"[Profiling] Chunk tagging 실패 (계속 진행): {e}")
+                logger.warning(f"[Profiling] Chunk tagging/search_text 실패 (계속 진행): {e}")
 
             # 진행률 50% (청킹 완료)
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.5)
@@ -590,12 +603,14 @@ class IndexingPipeline:
                 self.chunk_store.save_chunks(chunks)
                 logger.info("Saved chunks to database")
             
-            # 8-1. Chunk Tagging (청크 메타데이터 태깅)
-            logger.info("[Profiling] Chunk tagging 시작...")
+            # 8-1. Chunk Tagging + search_text 생성
+            logger.info("[Profiling] Chunk tagging 및 search_text 생성 시작...")
             try:
                 from ..chunking.chunk_tagger import ChunkTagger
+                from ..chunking.search_text_builder import SearchTextBuilder
                 
                 chunk_tagger = ChunkTagger()
+                search_text_builder = SearchTextBuilder()
                 metadata_updates = []
                 
                 # 파일별로 프로파일 매핑
@@ -603,7 +618,17 @@ class IndexingPipeline:
                 
                 for chunk in chunks:
                     file_profile = file_profile_map.get(chunk.file_path)
+                    
+                    # 1. 메타데이터 태깅
                     chunk_metadata = chunk_tagger.tag_chunk(chunk.text, file_profile)
+                    
+                    # 2. search_text 생성
+                    search_text = search_text_builder.build(chunk, file_profile, chunk_metadata)
+                    
+                    # 3. chunk.attrs에 추가 (나중에 embedding/lexical에서 사용)
+                    chunk.attrs["search_text"] = search_text
+                    chunk.attrs["metadata"] = chunk_metadata
+                    
                     metadata_updates.append((repo_id, chunk.id, chunk_metadata))
                 
                 # 배치 업데이트
@@ -611,8 +636,9 @@ class IndexingPipeline:
                     self.chunk_store.update_chunk_metadata_batch(metadata_updates)
                     api_chunks = sum(1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk"))
                     logger.info(f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)")
+                    logger.info(f"[Profiling] search_text 생성 완료 ({len(chunks)}개 chunk)")
             except Exception as e:
-                logger.warning(f"[Profiling] Chunk tagging 실패 (계속 진행): {e}")
+                logger.warning(f"[Profiling] Chunk tagging/search_text 실패 (계속 진행): {e}")
 
             # 진행률 50% (청킹 완료)
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.5)

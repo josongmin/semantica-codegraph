@@ -119,7 +119,8 @@ class MeiliSearchAdapter(LexicalSearchPort):
                 "node_id": chunk.node_id,
                 "file_path": chunk.file_path,
                 "language": chunk.language,
-                "text": chunk.text,
+                # search_text 우선, 없으면 raw text
+                "text": chunk.attrs.get("search_text", chunk.text),
                 "span": list(chunk.span),  # tuple -> list (JSON 직렬화)
                 **chunk.attrs,
             }

@@ -153,8 +153,13 @@ class EmbeddingService:
         """
         청크를 임베딩 텍스트로 변환
 
-        전략: 코드 + docstring (권장)
+        전략: search_text 우선 (메타 포함), 없으면 코드 + docstring
         """
+        # 1. search_text가 있으면 우선 사용 (SearchTextBuilder 출력)
+        if chunk.attrs.get("search_text"):
+            return chunk.attrs["search_text"]
+        
+        # 2. Fallback: 기존 방식 (코드 + docstring)
         parts = [chunk.text]
 
         # Docstring 추가
