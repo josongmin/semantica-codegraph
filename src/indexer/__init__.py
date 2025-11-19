@@ -4,4 +4,3 @@ from .pipeline import IndexingPipeline
 from .repo_scanner import RepoScanner
 
 __all__ = ["IndexingPipeline", "RepoScanner"]
-

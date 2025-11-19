@@ -44,7 +44,7 @@ class ParseCache:
     def _compute_file_hash(self, file_path: Path) -> str:
         """파일 해시 계산 (SHA256)"""
         try:
-            with open(file_path, "rb") as f:
+            with Path(file_path).open("rb") as f:
                 content = f.read()
             return hashlib.sha256(content).hexdigest()
         except Exception as e:
@@ -58,10 +58,7 @@ class ParseCache:
         return repo_cache_dir / f"{file_hash}.json"
 
     def get(
-        self,
-        repo_id: str,
-        file_path: Path,
-        current_hash: str | None = None
+        self, repo_id: str, file_path: Path, current_hash: str | None = None
     ) -> tuple[list[RawSymbol], list[RawRelation]] | None:
         """
         캐시에서 파싱 결과 조회
@@ -90,7 +87,7 @@ class ParseCache:
             return None
 
         try:
-            with open(cache_path, encoding="utf-8") as f:
+            with cache_path.open(encoding="utf-8") as f:
                 data = json.load(f)
 
             # 파일 경로 확인 (같은 해시지만 다른 파일일 수 있음)
@@ -107,7 +104,9 @@ class ParseCache:
             symbols = [self._deserialize_symbol(s) for s in data.get("symbols", [])]
             relations = [self._deserialize_relation(r) for r in data.get("relations", [])]
 
-            logger.debug(f"Cache hit: {file_path} ({len(symbols)} symbols, {len(relations)} relations)")
+            logger.debug(
+                f"Cache hit: {file_path} ({len(symbols)} symbols, {len(relations)} relations)"
+            )
             return symbols, relations
 
         except Exception as e:
@@ -120,7 +119,7 @@ class ParseCache:
         file_path: Path,
         symbols: list[RawSymbol],
         relations: list[RawRelation],
-        file_hash: str | None = None
+        file_hash: str | None = None,
     ) -> None:
         """
         파싱 결과를 캐시에 저장
@@ -153,7 +152,7 @@ class ParseCache:
                 "relations": [self._serialize_relation(r) for r in relations],
             }
 
-            with open(cache_path, "w", encoding="utf-8") as f:
+            with cache_path.open("w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
             logger.debug(f"Cached: {file_path} -> {cache_path}")
@@ -166,6 +165,7 @@ class ParseCache:
         repo_cache_dir = self.cache_root / repo_id
         if repo_cache_dir.exists():
             import shutil
+
             shutil.rmtree(repo_cache_dir)
             logger.info(f"Cleared cache for repo: {repo_id}")
 
@@ -173,6 +173,7 @@ class ParseCache:
         """전체 캐시 삭제"""
         if self.cache_root.exists():
             import shutil
+
             shutil.rmtree(self.cache_root)
             logger.info("Cleared all cache")
 
@@ -223,4 +224,3 @@ class ParseCache:
             dst_span=tuple(data["dst_span"]),
             attrs=data.get("attrs", {}),
         )
-

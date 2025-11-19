@@ -33,9 +33,8 @@ def test_all_embedding_models():
         EmbeddingModel.ALL_MINI_LM_L6_V2,
         EmbeddingModel.ALL_MPNET_BASE_V2,
         EmbeddingModel.CODEBERT_BASE,
-        EmbeddingModel.COHERE_V3
+        EmbeddingModel.COHERE_V3,
     ]
 
     assert len(models) == 7
     assert all(model.value for model in models)
-

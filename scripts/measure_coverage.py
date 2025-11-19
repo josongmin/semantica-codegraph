@@ -49,7 +49,7 @@ def measure_coverage(repo_path: str, framework: str = None):
         stats["total_files"] += 1
 
         try:
-            code = py_file.read_text(encoding='utf-8')
+            code = py_file.read_text(encoding="utf-8")
         except Exception as e:
             print(f"⚠️  읽기 실패: {py_file}: {e}")
             continue
@@ -62,13 +62,15 @@ def measure_coverage(repo_path: str, framework: str = None):
         try:
             rel_path = py_file.relative_to(repo_path)
 
-            symbols, relations = parser.parse_file({
-                "repo_id": "measure",
-                "path": str(rel_path),
-                "file_path": str(rel_path),
-                "abs_path": str(py_file),
-                "language": "python"
-            })
+            symbols, relations = parser.parse_file(
+                {
+                    "repo_id": "measure",
+                    "path": str(rel_path),
+                    "file_path": str(rel_path),
+                    "abs_path": str(py_file),
+                    "language": "python",
+                }
+            )
 
             stats["total_symbols"] += len(symbols)
             stats["total_relations"] += len(relations)
@@ -134,16 +136,14 @@ def measure_coverage(repo_path: str, framework: str = None):
     if total_inferred > 0:
         # 신뢰도는 실제 파일 읽어서 계산해야 함
         # 일단 대략적으로 추정
-        avg_confidence = {
-            "type_hint": 0.90,
-            "pattern": 0.85,
-            "test_analysis": 0.95
-        }
+        avg_confidence = {"type_hint": 0.90, "pattern": 0.85, "test_analysis": 0.95}
 
-        weighted_conf = sum(
-            stats["inferred_by_method"].get(m, 0) * c
-            for m, c in avg_confidence.items()
-        ) / total_inferred if total_inferred > 0 else 0
+        weighted_conf = (
+            sum(stats["inferred_by_method"].get(m, 0) * c for m, c in avg_confidence.items())
+            / total_inferred
+            if total_inferred > 0
+            else 0
+        )
 
         print(f"\n평균 신뢰도: {weighted_conf:.2f}")
 
@@ -178,7 +178,9 @@ def main():
     total_inferred = sum(stats["inferred_by_method"].values())
     type_hint = stats["inferred_by_method"].get("type_hint", 0)
 
-    overall_coverage = (total_inferred / stats["total_getattr"] * 100) if stats["total_getattr"] > 0 else 0
+    overall_coverage = (
+        (total_inferred / stats["total_getattr"] * 100) if stats["total_getattr"] > 0 else 0
+    )
 
     print("\n" + "=" * 80)
     print("최종 평가")
@@ -211,4 +213,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 @dataclass
 class SearchResult:
     """검색 결과"""
+
     query: str
     results: list[str]  # 파일 경로 또는 chunk ID
     latency_ms: float
@@ -16,6 +17,7 @@ class SearchResult:
 @dataclass
 class GroundTruth:
     """정답 데이터"""
+
     query: str
     relevant_items: set[str]  # 관련 있는 파일/chunk ID들
 
@@ -23,6 +25,7 @@ class GroundTruth:
 @dataclass
 class EvaluationMetrics:
     """평가 메트릭 결과"""
+
     precision_at_k: float
     recall_at_k: float
     mrr: float  # Mean Reciprocal Rank
@@ -97,10 +100,7 @@ class MetricsCalculator:
 
     @classmethod
     def evaluate_batch(
-        cls,
-        results: list[SearchResult],
-        ground_truths: list[GroundTruth],
-        k: int = 5
+        cls, results: list[SearchResult], ground_truths: list[GroundTruth], k: int = 5
     ) -> EvaluationMetrics:
         """
         배치 평가
@@ -141,7 +141,7 @@ class MetricsCalculator:
             recall_at_k=sum(recalls) / n,
             mrr=sum(rrs) / n,
             avg_latency_ms=sum(latencies) / n,
-            total_queries=n
+            total_queries=n,
         )
 
 
@@ -162,4 +162,3 @@ def time_search(search_func, query: str, **kwargs) -> tuple[list[str], float]:
     end = time.perf_counter()
     latency_ms = (end - start) * 1000
     return results, latency_ms
-

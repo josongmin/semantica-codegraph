@@ -31,11 +31,7 @@ class SemanticaEvaluator:
         self.retriever = self.bootstrap.hybrid_retriever
 
     def search(
-        self,
-        repo_id: RepoId,
-        query: str,
-        k: int = 5,
-        location_ctx: LocationContext | None = None
+        self, repo_id: RepoId, query: str, k: int = 5, location_ctx: LocationContext | None = None
     ) -> SearchResult:
         """
         검색 실행 및 결과 반환
@@ -52,10 +48,7 @@ class SemanticaEvaluator:
         # 검색 실행 및 시간 측정
         start = time.perf_counter()
         candidates = self.retriever.retrieve(
-            repo_id=repo_id,
-            query=query,
-            k=k,
-            location_ctx=location_ctx
+            repo_id=repo_id, query=query, k=k, location_ctx=location_ctx
         )
         end = time.perf_counter()
         latency_ms = (end - start) * 1000
@@ -64,18 +57,10 @@ class SemanticaEvaluator:
         file_paths = [c.file_path for c in candidates]
 
         return SearchResult(
-            query=query,
-            results=file_paths,
-            latency_ms=latency_ms,
-            retriever_name="semantica"
+            query=query, results=file_paths, latency_ms=latency_ms, retriever_name="semantica"
         )
 
-    def batch_search(
-        self,
-        repo_id: RepoId,
-        queries: list[str],
-        k: int = 5
-    ) -> list[SearchResult]:
+    def batch_search(self, repo_id: RepoId, queries: list[str], k: int = 5) -> list[SearchResult]:
         """
         배치 검색
 
@@ -92,4 +77,3 @@ class SemanticaEvaluator:
             result = self.search(repo_id, query, k)
             results.append(result)
         return results
-

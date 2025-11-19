@@ -660,4 +660,3 @@ type UnionToIntersection<U> = (U extends any ? (x: U) => void : never) extends (
 ) => void
   ? I
   : never;
-

@@ -25,17 +25,11 @@ class CodyEvaluator:
 
         self.endpoint = endpoint or "https://sourcegraph.com/.api/graphql"
         self.session = requests.Session()
-        self.session.headers.update({
-            "Authorization": f"token {self.api_token}",
-            "Content-Type": "application/json"
-        })
+        self.session.headers.update(
+            {"Authorization": f"token {self.api_token}", "Content-Type": "application/json"}
+        )
 
-    def search(
-        self,
-        query: str,
-        repo: str,
-        k: int = 5
-    ) -> SearchResult:
+    def search(self, query: str, repo: str, k: int = 5) -> SearchResult:
         """
         Sourcegraph 검색 실행
 
@@ -77,9 +71,7 @@ class CodyEvaluator:
         # 검색 실행 및 시간 측정
         def _search():
             response = self.session.post(
-                self.endpoint,
-                json={"query": gql_query, "variables": variables},
-                timeout=30
+                self.endpoint, json={"query": gql_query, "variables": variables}, timeout=30
             )
             response.raise_for_status()
             return response.json()
@@ -97,18 +89,10 @@ class CodyEvaluator:
             print(f"Error parsing Sourcegraph response: {e}")
 
         return SearchResult(
-            query=query,
-            results=file_paths,
-            latency_ms=latency_ms,
-            retriever_name="cody"
+            query=query, results=file_paths, latency_ms=latency_ms, retriever_name="cody"
         )
 
-    def batch_search(
-        self,
-        queries: list[str],
-        repo: str,
-        k: int = 5
-    ) -> list[SearchResult]:
+    def batch_search(self, queries: list[str], repo: str, k: int = 5) -> list[SearchResult]:
         """
         배치 검색
 
@@ -125,4 +109,3 @@ class CodyEvaluator:
             result = self.search(query, repo, k)
             results.append(result)
         return results
-

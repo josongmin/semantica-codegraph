@@ -1,6 +1,5 @@
 """의존성 주입 및 포트 초기화"""
 
-
 from meilisearch import Client
 
 from ..search.adapters.lexical.meili_adapter import MeiliSearchAdapter
@@ -31,6 +30,7 @@ class Bootstrap:
         self._semantic_search = None
         self._graph_search = None
         self._fuzzy_search = None
+        self._fusion_strategy = None
         self._hybrid_retriever = None
         self._ranker = None
         self._context_packer = None
@@ -50,6 +50,7 @@ class Bootstrap:
         """저장소 메타데이터 스토어"""
         if self._repo_store is None:
             from .repo_store import RepoMetadataStore
+
             self._repo_store = RepoMetadataStore(self._connection_string)
         return self._repo_store
 
@@ -58,10 +59,11 @@ class Bootstrap:
         """코드 그래프 스토어"""
         if self._graph_store is None:
             from ..graph.store_postgres import PostgresGraphStore
+
             self._graph_store = PostgresGraphStore(
                 connection_string=self._connection_string,
                 pool_size=self.config.db_connection_pool_size,
-                pool_max=self.config.db_connection_pool_max
+                pool_max=self.config.db_connection_pool_max,
             )
         return self._graph_store
 
@@ -70,6 +72,7 @@ class Bootstrap:
         """청크 스토어"""
         if self._chunk_store is None:
             from ..chunking.store import PostgresChunkStore
+
             self._chunk_store = PostgresChunkStore(self._connection_string)
         return self._chunk_store
 
@@ -78,11 +81,12 @@ class Bootstrap:
         """임베딩 서비스"""
         if self._embedding_service is None:
             from ..embedding.service import EmbeddingService
+
             self._embedding_service = EmbeddingService(
                 model=self.config.embedding_model,
                 api_key=self.config.embedding_api_key,
                 api_base=self.config.mistral_api_base,
-                dimension=self.config.embedding_dimension
+                dimension=self.config.embedding_dimension,
             )
         return self._embedding_service
 
@@ -91,12 +95,13 @@ class Bootstrap:
         """임베딩 스토어"""
         if self._embedding_store is None:
             from ..embedding.store_pgvector import PgVectorStore
+
             self._embedding_store = PgVectorStore(
                 connection_string=self._connection_string,
                 embedding_dimension=self.embedding_service.get_dimension(),
                 model_name=self.config.embedding_model.value,
                 pool_size=self.config.db_connection_pool_size,
-                pool_max=self.config.db_connection_pool_max
+                pool_max=self.config.db_connection_pool_max,
             )
         return self._embedding_store
 
@@ -129,6 +134,7 @@ class Bootstrap:
         """IR 빌더"""
         if self._ir_builder is None:
             from ..graph.ir_builder import IRBuilder
+
             self._ir_builder = IRBuilder()
         return self._ir_builder
 
@@ -137,7 +143,12 @@ class Bootstrap:
         """청커"""
         if self._chunker is None:
             from ..chunking.chunker import Chunker
-            self._chunker = Chunker()
+
+            self._chunker = Chunker(
+                max_lines=self.config.chunker_max_lines,
+                overlap_lines=self.config.chunker_overlap_lines,
+                max_tokens=self.config.chunker_max_tokens,
+            )
         return self._chunker
 
     @property
@@ -145,6 +156,7 @@ class Bootstrap:
         """저장소 스캐너"""
         if self._scanner is None:
             from ..indexer.repo_scanner import RepoScanner
+
             self._scanner = RepoScanner()
         return self._scanner
 
@@ -168,7 +180,7 @@ class Bootstrap:
                 ir_builder=self.ir_builder,
                 chunker=self.chunker,
                 scanner=self.scanner,
-                parse_cache=parse_cache
+                parse_cache=parse_cache,
             )
             # Config 전달 (병렬 처리 옵션용)
             self._pipeline.config = self.config
@@ -179,9 +191,9 @@ class Bootstrap:
         """의미론적 검색"""
         if self._semantic_search is None:
             from ..search.adapters.semantic.pgvector_adapter import PgVectorSemanticSearch
+
             self._semantic_search = PgVectorSemanticSearch(
-                embedding_service=self.embedding_service,
-                embedding_store=self.embedding_store
+                embedding_service=self.embedding_service, embedding_store=self.embedding_store
             )
         return self._semantic_search
 
@@ -190,9 +202,8 @@ class Bootstrap:
         """그래프 검색"""
         if self._graph_search is None:
             from ..search.adapters.graph.postgres_graph_adapter import PostgresGraphSearch
-            self._graph_search = PostgresGraphSearch(
-                graph_store=self.graph_store
-            )
+
+            self._graph_search = PostgresGraphSearch(graph_store=self.graph_store)
         return self._graph_search
 
     @property
@@ -200,24 +211,54 @@ class Bootstrap:
         """퍼지 검색"""
         if self._fuzzy_search is None:
             from ..search.adapters.fuzzy.symbol_fuzzy_matcher import SymbolFuzzyMatcher
+
             self._fuzzy_search = SymbolFuzzyMatcher(
-                graph_store=self.graph_store,
-                config=self.config
+                graph_store=self.graph_store, config=self.config
             )
         return self._fuzzy_search
+
+    @property
+    def fusion_strategy(self):
+        """Fusion 전략"""
+        if self._fusion_strategy is None:
+            strategy_name = self.config.fusion_strategy
+
+            if strategy_name == "weighted_sum":
+                from ..search.adapters.fusion import WeightedFusion
+
+                self._fusion_strategy = WeightedFusion()
+            elif strategy_name == "rrf":
+                from ..search.adapters.fusion import ReciprocalRankFusion
+
+                self._fusion_strategy = ReciprocalRankFusion(k=self.config.fusion_rrf_k)
+            elif strategy_name == "combsum":
+                from ..search.adapters.fusion import CombSumFusion
+
+                self._fusion_strategy = CombSumFusion(
+                    use_weights=self.config.fusion_combsum_use_weights
+                )
+            else:
+                raise ValueError(
+                    f"Unknown fusion strategy: {strategy_name}. "
+                    f"Available: 'weighted_sum', 'rrf', 'combsum'"
+                )
+
+        return self._fusion_strategy
 
     @property
     def hybrid_retriever(self):
         """하이브리드 리트리버"""
         if self._hybrid_retriever is None:
             from ..search.adapters.retriever.hybrid_retriever import HybridRetriever
+
             self._hybrid_retriever = HybridRetriever(
                 lexical_search=self.lexical_search,
                 semantic_search=self.semantic_search,
                 graph_search=self.graph_search,
                 fuzzy_search=self.fuzzy_search,
                 chunk_store=self.chunk_store,
-                config=self.config
+                config=self.config,
+                fusion_strategy=self.fusion_strategy,  # Fusion 전략 주입
             )
         return self._hybrid_retriever
 
@@ -226,6 +267,7 @@ class Bootstrap:
         """랭커"""
         if self._ranker is None:
             from ..search.adapters.ranking.ranker import Ranker
+
             self._ranker = Ranker()
         return self._ranker
 
@@ -234,9 +276,9 @@ class Bootstrap:
         """컨텍스트 패커"""
         if self._context_packer is None:
             from ..context.packer import ContextPacker
+
             self._context_packer = ContextPacker(
-                chunk_store=self.chunk_store,
-                graph_store=self.graph_store
+                chunk_store=self.chunk_store, graph_store=self.graph_store
             )
         return self._context_packer
 

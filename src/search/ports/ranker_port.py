@@ -15,4 +15,3 @@ class RankerPort(Protocol):
     ) -> list[Candidate]:
         """후보 리스트 랭킹 및 필터링"""
         ...
-

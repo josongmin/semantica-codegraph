@@ -71,37 +71,43 @@ class PgVectorStore(EmbeddingStorePort):
                 cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
                 # 기존 테이블 존재 여부 확인
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT EXISTS (
                         SELECT FROM information_schema.tables
                         WHERE table_name = 'embeddings'
                     )
-                """)
+                """
+                )
                 table_exists = cur.fetchone()[0]
 
                 # 테이블이 존재하면 차원 확인
                 if table_exists:
                     # information_schema에서 컬럼 정의 확인
-                    cur.execute("""
+                    cur.execute(
+                        """
                         SELECT
                             udt_name,
                             character_maximum_length
                         FROM information_schema.columns
                         WHERE table_name = 'embeddings'
                         AND column_name = 'embedding'
-                    """)
+                    """
+                    )
                     try:
                         col_info = cur.fetchone()
                         if col_info:
                             # pgvector는 udt_name이 'vector'이고 차원은 별도로 저장되지 않음
                             # 대신 pg_attribute에서 확인
-                            cur.execute("""
+                            cur.execute(
+                                """
                                 SELECT
                                     format_type(atttypid, atttypmod) as type_name
                                 FROM pg_attribute
                                 WHERE attrelid = 'embeddings'::regclass
                                 AND attname = 'embedding'
-                            """)
+                            """
+                            )
                             type_result = cur.fetchone()
                             if type_result and type_result[0]:
                                 # vector(384) 형식에서 숫자 추출
@@ -125,7 +131,8 @@ class PgVectorStore(EmbeddingStorePort):
 
                 # embeddings 테이블 생성
                 if not table_exists:
-                    cur.execute(f"""
+                    cur.execute(
+                        f"""
                         CREATE TABLE IF NOT EXISTS embeddings (
                             repo_id TEXT NOT NULL,
                             chunk_id TEXT NOT NULL,
@@ -135,43 +142,54 @@ class PgVectorStore(EmbeddingStorePort):
                             created_at TIMESTAMP DEFAULT NOW(),
                             PRIMARY KEY (repo_id, chunk_id, model)
                         )
-                    """)
+                    """
+                    )
                 else:
                     # content_hash 컬럼 추가 (기존 테이블에)
                     try:
-                        cur.execute("""
+                        cur.execute(
+                            """
                             ALTER TABLE embeddings
                             ADD COLUMN IF NOT EXISTS content_hash TEXT
-                        """)
+                        """
+                        )
                     except Exception as e:
                         logger.debug(f"content_hash column may already exist: {e}")
 
                 # HNSW 인덱스 (빠른 근사 검색)
                 # PostgreSQL 16+ 필요
                 try:
-                    cur.execute("""
+                    cur.execute(
+                        """
                         CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw
                         ON embeddings USING hnsw (embedding vector_cosine_ops)
                         WITH (m = 16, ef_construction = 64)
-                    """)
+                    """
+                    )
                 except psycopg2.errors.UndefinedFunction:
                     # HNSW 지원 안 되면 IVFFlat 사용
                     logger.warning("HNSW not supported, using IVFFlat")
-                    cur.execute("""
+                    cur.execute(
+                        """
                         CREATE INDEX IF NOT EXISTS idx_embeddings_ivfflat
                         ON embeddings USING ivfflat (embedding vector_cosine_ops)
                         WITH (lists = 100)
-                    """)
+                    """
+                    )
 
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_embeddings_model
                     ON embeddings(repo_id, model)
-                """)
+                """
+                )
 
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_embeddings_content_hash
                     ON embeddings(content_hash)
-                """)
+                """
+                )
 
                 conn.commit()
         finally:

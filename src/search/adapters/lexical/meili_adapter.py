@@ -56,7 +56,7 @@ class MeiliSearchAdapter(LexicalSearchPort):
                 logger.info(f"Creating new index: {index_name}")
                 task = self.client.create_index(index_name, {"primaryKey": "id"})
                 # 작업 완료 대기
-                task_uid = task.task_uid if hasattr(task, 'task_uid') else task.uid
+                task_uid = task.task_uid if hasattr(task, "task_uid") else task.uid
                 self.client.wait_for_task(task_uid)
                 index = self.client.get_index(index_name)
 
@@ -77,9 +77,7 @@ class MeiliSearchAdapter(LexicalSearchPort):
         )
 
         # 필터 가능한 속성
-        task2 = index.update_filterable_attributes(
-            ["repo_id", "language", "file_path", "node_id"]
-        )
+        task2 = index.update_filterable_attributes(["repo_id", "language", "file_path", "node_id"])
 
         # 정렬 가능한 속성
         task3 = index.update_sortable_attributes(["file_path"])
@@ -98,7 +96,7 @@ class MeiliSearchAdapter(LexicalSearchPort):
 
         # 작업 완료 대기
         for task in [task1, task2, task3, task4]:
-            task_uid = task.task_uid if hasattr(task, 'task_uid') else task.uid
+            task_uid = task.task_uid if hasattr(task, "task_uid") else task.uid
             self.client.wait_for_task(task_uid)
 
         logger.debug(f"Configured index: {index.uid}")
@@ -139,7 +137,7 @@ class MeiliSearchAdapter(LexicalSearchPort):
 
         # 마지막 작업 완료 대기 (검색 전에 인덱싱이 완료되도록)
         if last_task:
-            task_uid = last_task.task_uid if hasattr(last_task, 'task_uid') else last_task.uid
+            task_uid = last_task.task_uid if hasattr(last_task, "task_uid") else last_task.uid
             self.client.wait_for_task(task_uid)
 
         logger.info(f"Indexed {len(documents)} chunks for repo: {repo_id}")
@@ -220,7 +218,7 @@ class MeiliSearchAdapter(LexicalSearchPort):
         index_name = self._get_index_name(repo_id)
         try:
             task = self.client.delete_index(index_name)
-            task_uid = task.task_uid if hasattr(task, 'task_uid') else task.uid
+            task_uid = task.task_uid if hasattr(task, "task_uid") else task.uid
             self.client.wait_for_task(task_uid)
             logger.info(f"Deleted index: {index_name}")
         except MeilisearchApiError as e:
@@ -229,4 +227,3 @@ class MeiliSearchAdapter(LexicalSearchPort):
             else:
                 logger.error(f"Failed to delete index {index_name}: {e}")
                 raise
-

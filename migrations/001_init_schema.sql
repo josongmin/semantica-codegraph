@@ -14,28 +14,28 @@ CREATE TABLE IF NOT EXISTS repo_metadata (
     git_url TEXT,
     default_branch TEXT DEFAULT 'main',
     languages TEXT[],
-    
+
     -- 통계
     total_files INTEGER DEFAULT 0,
     total_nodes INTEGER DEFAULT 0,
     total_chunks INTEGER DEFAULT 0,
-    
+
     -- 인덱싱 상태
     indexing_status TEXT DEFAULT 'pending',  -- "pending" | "indexing" | "completed" | "failed"
     indexing_progress FLOAT DEFAULT 0.0,
     indexing_started_at TIMESTAMP,
     indexing_completed_at TIMESTAMP,
     indexing_error TEXT,
-    
+
     -- 타임스탬프
     created_at TIMESTAMP DEFAULT NOW(),
     last_indexed_at TIMESTAMP,
-    
+
     -- 저장소별 설정
     config JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_repos_status 
+CREATE INDEX IF NOT EXISTS idx_repos_status
 ON repo_metadata(indexing_status);
 
 -- ============================================================================
@@ -59,16 +59,16 @@ CREATE TABLE IF NOT EXISTS code_nodes (
     FOREIGN KEY (repo_id) REFERENCES repo_metadata(repo_id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_nodes_file_path 
+CREATE INDEX IF NOT EXISTS idx_nodes_file_path
 ON code_nodes(repo_id, file_path);
 
-CREATE INDEX IF NOT EXISTS idx_nodes_location 
+CREATE INDEX IF NOT EXISTS idx_nodes_location
 ON code_nodes(repo_id, file_path, span_start_line, span_end_line);
 
-CREATE INDEX IF NOT EXISTS idx_nodes_name 
+CREATE INDEX IF NOT EXISTS idx_nodes_name
 ON code_nodes(repo_id, name);
 
-CREATE INDEX IF NOT EXISTS idx_nodes_kind 
+CREATE INDEX IF NOT EXISTS idx_nodes_kind
 ON code_nodes(repo_id, kind);
 
 -- ============================================================================
@@ -85,13 +85,13 @@ CREATE TABLE IF NOT EXISTS code_edges (
     FOREIGN KEY (repo_id) REFERENCES repo_metadata(repo_id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_edges_src 
+CREATE INDEX IF NOT EXISTS idx_edges_src
 ON code_edges(repo_id, src_id);
 
-CREATE INDEX IF NOT EXISTS idx_edges_dst 
+CREATE INDEX IF NOT EXISTS idx_edges_dst
 ON code_edges(repo_id, dst_id);
 
-CREATE INDEX IF NOT EXISTS idx_edges_type 
+CREATE INDEX IF NOT EXISTS idx_edges_type
 ON code_edges(repo_id, type);
 
 -- ============================================================================
@@ -116,13 +116,13 @@ CREATE TABLE IF NOT EXISTS code_chunks (
 );
 
 -- Zoekt 매핑에 필수!
-CREATE INDEX IF NOT EXISTS idx_chunks_location 
+CREATE INDEX IF NOT EXISTS idx_chunks_location
 ON code_chunks(repo_id, file_path, span_start_line, span_end_line);
 
-CREATE INDEX IF NOT EXISTS idx_chunks_node 
+CREATE INDEX IF NOT EXISTS idx_chunks_node
 ON code_chunks(repo_id, node_id);
 
-CREATE INDEX IF NOT EXISTS idx_chunks_language 
+CREATE INDEX IF NOT EXISTS idx_chunks_language
 ON code_chunks(repo_id, language);
 
 -- ============================================================================
@@ -140,16 +140,16 @@ CREATE TABLE IF NOT EXISTS embeddings (
 
 -- pgvector 인덱스 (코사인 유사도)
 -- HNSW: 빠른 근사 검색 (PostgreSQL 16+)
-CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw 
+CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw
 ON embeddings USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 
 -- 또는 IVFFlat: 메모리 효율적 (PostgreSQL 11+)
--- CREATE INDEX IF NOT EXISTS idx_embeddings_ivfflat 
+-- CREATE INDEX IF NOT EXISTS idx_embeddings_ivfflat
 -- ON embeddings USING ivfflat (embedding vector_cosine_ops)
 -- WITH (lists = 100);
 
-CREATE INDEX IF NOT EXISTS idx_embeddings_model 
+CREATE INDEX IF NOT EXISTS idx_embeddings_model
 ON embeddings(repo_id, model);
 
 -- ============================================================================
@@ -171,13 +171,13 @@ CREATE TABLE IF NOT EXISTS code_files (
     FOREIGN KEY (repo_id) REFERENCES repo_metadata(repo_id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_files_language 
+CREATE INDEX IF NOT EXISTS idx_files_language
 ON code_files(repo_id, language);
 
-CREATE INDEX IF NOT EXISTS idx_files_status 
+CREATE INDEX IF NOT EXISTS idx_files_status
 ON code_files(repo_id, parsing_status);
 
-CREATE INDEX IF NOT EXISTS idx_files_hash 
+CREATE INDEX IF NOT EXISTS idx_files_hash
 ON code_files(repo_id, content_hash);
 
 -- ============================================================================
@@ -186,7 +186,7 @@ ON code_files(repo_id, content_hash);
 
 -- 저장소 요약 뷰
 CREATE OR REPLACE VIEW repo_summary AS
-SELECT 
+SELECT
     r.repo_id,
     r.name,
     r.indexing_status,
@@ -198,12 +198,12 @@ SELECT
     COUNT(DISTINCT e.chunk_id) as embedded_chunks
 FROM repo_metadata r
 LEFT JOIN embeddings e ON r.repo_id = e.repo_id
-GROUP BY r.repo_id, r.name, r.indexing_status, r.total_files, 
+GROUP BY r.repo_id, r.name, r.indexing_status, r.total_files,
          r.total_nodes, r.total_chunks, r.languages, r.last_indexed_at;
 
 -- 파일별 통계 뷰
 CREATE OR REPLACE VIEW file_stats AS
-SELECT 
+SELECT
     f.repo_id,
     f.file_path,
     f.language,
@@ -258,4 +258,3 @@ CREATE TRIGGER trigger_update_repo_stats_chunks
 AFTER INSERT OR UPDATE OR DELETE ON code_chunks
 FOR EACH ROW
 EXECUTE FUNCTION update_repo_stats();
-

@@ -13,6 +13,7 @@
 
 import logging
 import time
+from pathlib import Path
 
 from ..core.models import RawRelation, RawSymbol
 from ..core.ports import ParserPort
@@ -82,10 +83,7 @@ class EnhancedParser(ParserPort):
             f"type_hint={enable_type_hint}, pattern={enable_pattern}, test={enable_test}"
         )
 
-    def parse_file(
-        self,
-        file_meta: dict
-    ) -> tuple[list[RawSymbol], list[RawRelation]]:
+    def parse_file(self, file_meta: dict) -> tuple[list[RawSymbol], list[RawRelation]]:
         """
         강화된 파싱
 
@@ -105,7 +103,7 @@ class EnhancedParser(ParserPort):
 
         # 파일 읽기 (동적 분석용)
         try:
-            with open(abs_path, encoding='utf-8') as f:
+            with Path(abs_path).open(encoding="utf-8") as f:
                 code = f.read()
         except Exception as e:
             logger.warning(f"Failed to read file for dynamic analysis: {e}")
@@ -138,15 +136,13 @@ class EnhancedParser(ParserPort):
                             "method": "type_hint",
                             "source_symbol": call.source,
                             "target_symbol": call.target,
-                            "line": call.line
-                        }
+                            "line": call.line,
+                        },
                     )
                 )
 
             if type_hint_calls:
-                logger.debug(
-                    f"Type hint: {len(type_hint_calls)} calls inferred"
-                )
+                logger.debug(f"Type hint: {len(type_hint_calls)} calls inferred")
 
         # 3. 패턴 분석 (프레임워크 있을 때만)
         if self.enable_pattern:
@@ -160,18 +156,12 @@ class EnhancedParser(ParserPort):
                     logger.info(f"Framework detected: {detected_framework}")
 
                 start = time.time()
-                pattern_matches = self.pattern_analyzer.analyze(
-                    code,
-                    file_path,
-                    symbol_names
-                )
+                pattern_matches = self.pattern_analyzer.analyze(code, file_path, symbol_names)
                 self.stats["pattern_time"] += time.time() - start
 
                 # RawRelation으로 변환
                 pattern_relations = self.pattern_analyzer.to_relations(
-                    pattern_matches,
-                    file_meta.get("repo_id", ""),
-                    file_path
+                    pattern_matches, file_meta.get("repo_id", ""), file_path
                 )
 
                 for rel_dict in pattern_relations:
@@ -181,20 +171,23 @@ class EnhancedParser(ParserPort):
                             file_path=file_path,
                             language="python",
                             type=rel_dict["type"],
-                            src_span=(rel_dict["attrs"].get("line", 0), 0, rel_dict["attrs"].get("line", 0), 0),
+                            src_span=(
+                                rel_dict["attrs"].get("line", 0),
+                                0,
+                                rel_dict["attrs"].get("line", 0),
+                                0,
+                            ),
                             dst_span=(0, 0, 0, 0),
                             attrs={
                                 **rel_dict["attrs"],
                                 "source_symbol": rel_dict["source"],
-                                "target_symbol": rel_dict["target"]
-                            }
+                                "target_symbol": rel_dict["target"],
+                            },
                         )
                     )
 
                 if pattern_matches:
-                    logger.debug(
-                        f"Pattern: {len(pattern_matches)} matches found"
-                    )
+                    logger.debug(f"Pattern: {len(pattern_matches)} matches found")
 
         # 4. 테스트 분석 (테스트 파일만)
         if self.test_analyzer and TestCodeAnalyzer.is_test_file(file_path):
@@ -204,9 +197,7 @@ class EnhancedParser(ParserPort):
 
             # RawRelation으로 변환
             test_relations = self.test_analyzer.to_relations(
-                test_calls,
-                file_meta.get("repo_id", ""),
-                file_path
+                test_calls, file_meta.get("repo_id", ""), file_path
             )
 
             for rel_dict in test_relations:
@@ -216,20 +207,23 @@ class EnhancedParser(ParserPort):
                         file_path=file_path,
                         language="python",
                         type=rel_dict["type"],
-                        src_span=(rel_dict["attrs"].get("line", 0), 0, rel_dict["attrs"].get("line", 0), 0),
+                        src_span=(
+                            rel_dict["attrs"].get("line", 0),
+                            0,
+                            rel_dict["attrs"].get("line", 0),
+                            0,
+                        ),
                         dst_span=(0, 0, 0, 0),
                         attrs={
                             **rel_dict["attrs"],
                             "source_symbol": rel_dict["source"],
-                            "target_symbol": rel_dict["target"]
-                        }
+                            "target_symbol": rel_dict["target"],
+                        },
                     )
                 )
 
             if test_calls:
-                logger.debug(
-                    f"Test: {len(test_calls)} calls extracted"
-                )
+                logger.debug(f"Test: {len(test_calls)} calls extracted")
 
         # 통계 로깅
         inferred_count = sum(1 for r in relations if r.attrs.get("inferred"))
@@ -254,4 +248,3 @@ class EnhancedParser(ParserPort):
         """통계 초기화"""
         for key in self.stats:
             self.stats[key] = 0.0
-

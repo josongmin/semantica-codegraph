@@ -29,7 +29,7 @@ class TextParser(ParserPort):
         abs_path = Path(file_meta["abs_path"])
 
         try:
-            with open(abs_path, encoding="utf-8") as f:
+            with Path(abs_path).open(encoding="utf-8") as f:
                 content = f.read()
         except Exception as e:
             logger.error(f"Failed to read {abs_path}: {e}")
@@ -39,7 +39,7 @@ class TextParser(ParserPort):
         if not content:
             line_count = 0
         else:
-            line_count = content.count('\n') + (0 if content.endswith('\n') else 1)
+            line_count = content.count("\n") + (0 if content.endswith("\n") else 1)
 
         # 파일 전체를 하나의 Document 노드로
         symbol = RawSymbol(
@@ -53,8 +53,8 @@ class TextParser(ParserPort):
                 "text": content,  # 전체 텍스트 내용
                 "file_type": abs_path.suffix,
                 "size": len(content),
-                "lines": line_count
-            }
+                "lines": line_count,
+            },
         )
 
         return [symbol], []  # 관계 없음

@@ -150,6 +150,21 @@ class IndexingPipeline:
                     total_files=0,
                     duration_seconds=time.time() - start_time,
                 )
+            
+            # 4-1. Repo Profiling (프로젝트 구조 분석)
+            logger.info("[Profiling] Repo profiling 시작...")
+            repo_profile = None
+            try:
+                from .repo_profiler import RepoProfiler
+                
+                repo_profiler = RepoProfiler()
+                repo_profile = repo_profiler.profile_repo(root_path, repo_id)
+                self.repo_store.save_profile(repo_profile)
+                
+                logger.info(f"[Profiling] Repo: framework={repo_profile.framework}, type={repo_profile.project_type}")
+                logger.info(f"[Profiling] API dirs: {len(repo_profile.api_directories)}, Test dirs: {len(repo_profile.test_directories)}")
+            except Exception as e:
+                logger.warning(f"[Profiling] Repo profiling 실패 (계속 진행): {e}")
 
             # 5. 파일별 파싱 + IR 변환 + 그래프 저장
             all_nodes: list[CodeNode] = []
@@ -220,6 +235,40 @@ class IndexingPipeline:
             if all_nodes:
                 self.graph_store.save_graph(all_nodes, all_edges)
                 logger.info("Saved graph to database")
+            
+            # 6-1. File Profiling (파일 역할 태깅)
+            logger.info("[Profiling] File profiling 시작...")
+            file_profiles = []
+            try:
+                from .file_profiler import FileProfiler
+                
+                file_profiler = FileProfiler()
+                
+                for file_meta in files:
+                    file_profile = file_profiler.profile_file(
+                        repo_id=repo_id,
+                        file_path=file_meta.file_path,
+                        abs_path=file_meta.abs_path,
+                        framework=repo_profile.framework if repo_profile else None,
+                    )
+                    file_profiles.append(file_profile)
+                
+                # 배치 저장
+                if file_profiles:
+                    self.repo_store.save_file_profiles_batch(file_profiles)
+                    api_count = sum(1 for p in file_profiles if p.is_api_file)
+                    logger.info(f"[Profiling] File: {len(file_profiles)}개 (API: {api_count}개)")
+            except Exception as e:
+                logger.warning(f"[Profiling] File profiling 실패 (계속 진행): {e}")
+            
+            # 6-2. Graph Ranking (노드 중요도 계산)
+            logger.info("[Profiling] Graph ranking 시작...")
+            try:
+                if all_nodes:
+                    updated_count = self.graph_store.update_all_node_importance(repo_id, batch_size=100)
+                    logger.info(f"[Profiling] Graph: {updated_count}개 노드 중요도 계산 완료")
+            except Exception as e:
+                logger.warning(f"[Profiling] Graph ranking 실패 (계속 진행): {e}")
 
             # 7. 청킹
             chunks = self.chunker.chunk(all_nodes)
@@ -229,6 +278,30 @@ class IndexingPipeline:
             if chunks:
                 self.chunk_store.save_chunks(chunks)
                 logger.info("Saved chunks to database")
+            
+            # 8-1. Chunk Tagging (청크 메타데이터 태깅)
+            logger.info("[Profiling] Chunk tagging 시작...")
+            try:
+                from ..chunking.chunk_tagger import ChunkTagger
+                
+                chunk_tagger = ChunkTagger()
+                metadata_updates = []
+                
+                # 파일별로 프로파일 매핑
+                file_profile_map = {p.file_path: p for p in file_profiles}
+                
+                for chunk in chunks:
+                    file_profile = file_profile_map.get(chunk.file_path)
+                    chunk_metadata = chunk_tagger.tag_chunk(chunk.text, file_profile)
+                    metadata_updates.append((repo_id, chunk.id, chunk_metadata))
+                
+                # 배치 업데이트
+                if metadata_updates:
+                    self.chunk_store.update_chunk_metadata_batch(metadata_updates)
+                    api_chunks = sum(1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk"))
+                    logger.info(f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)")
+            except Exception as e:
+                logger.warning(f"[Profiling] Chunk tagging 실패 (계속 진행): {e}")
 
             # 진행률 50% (청킹 완료)
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.5)
@@ -432,6 +505,40 @@ class IndexingPipeline:
             if all_nodes:
                 self.graph_store.save_graph(all_nodes, all_edges)
                 logger.info("Saved graph to database")
+            
+            # 6-1. File Profiling (파일 역할 태깅)
+            logger.info("[Profiling] File profiling 시작...")
+            file_profiles = []
+            try:
+                from .file_profiler import FileProfiler
+                
+                file_profiler = FileProfiler()
+                
+                for file_meta in files:
+                    file_profile = file_profiler.profile_file(
+                        repo_id=repo_id,
+                        file_path=file_meta.file_path,
+                        abs_path=file_meta.abs_path,
+                        framework=repo_profile.framework if repo_profile else None,
+                    )
+                    file_profiles.append(file_profile)
+                
+                # 배치 저장
+                if file_profiles:
+                    self.repo_store.save_file_profiles_batch(file_profiles)
+                    api_count = sum(1 for p in file_profiles if p.is_api_file)
+                    logger.info(f"[Profiling] File: {len(file_profiles)}개 (API: {api_count}개)")
+            except Exception as e:
+                logger.warning(f"[Profiling] File profiling 실패 (계속 진행): {e}")
+            
+            # 6-2. Graph Ranking (노드 중요도 계산)
+            logger.info("[Profiling] Graph ranking 시작...")
+            try:
+                if all_nodes:
+                    updated_count = self.graph_store.update_all_node_importance(repo_id, batch_size=100)
+                    logger.info(f"[Profiling] Graph: {updated_count}개 노드 중요도 계산 완료")
+            except Exception as e:
+                logger.warning(f"[Profiling] Graph ranking 실패 (계속 진행): {e}")
 
             # 7. 청킹
             chunks = self.chunker.chunk(all_nodes)
@@ -441,6 +548,30 @@ class IndexingPipeline:
             if chunks:
                 self.chunk_store.save_chunks(chunks)
                 logger.info("Saved chunks to database")
+            
+            # 8-1. Chunk Tagging (청크 메타데이터 태깅)
+            logger.info("[Profiling] Chunk tagging 시작...")
+            try:
+                from ..chunking.chunk_tagger import ChunkTagger
+                
+                chunk_tagger = ChunkTagger()
+                metadata_updates = []
+                
+                # 파일별로 프로파일 매핑
+                file_profile_map = {p.file_path: p for p in file_profiles}
+                
+                for chunk in chunks:
+                    file_profile = file_profile_map.get(chunk.file_path)
+                    chunk_metadata = chunk_tagger.tag_chunk(chunk.text, file_profile)
+                    metadata_updates.append((repo_id, chunk.id, chunk_metadata))
+                
+                # 배치 업데이트
+                if metadata_updates:
+                    self.chunk_store.update_chunk_metadata_batch(metadata_updates)
+                    api_chunks = sum(1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk"))
+                    logger.info(f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)")
+            except Exception as e:
+                logger.warning(f"[Profiling] Chunk tagging 실패 (계속 진행): {e}")
 
             # 진행률 50% (청킹 완료)
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.5)
@@ -592,9 +723,9 @@ class IndexingPipeline:
             model = self.embedding_service.model
 
             if model == EmbeddingModel.CODESTRAL_EMBED:
-                batch_size = 200  # Mistral은 200까지 지원
+                batch_size = 50  # Mistral - 배치 전체 토큰 제한 고려
             elif model in (EmbeddingModel.OPENAI_3_SMALL, EmbeddingModel.OPENAI_3_LARGE):
-                batch_size = 150  # OpenAI는 150까지
+                batch_size = 100  # OpenAI
             else:
                 batch_size = 100  # 기본값
         all_vectors = []

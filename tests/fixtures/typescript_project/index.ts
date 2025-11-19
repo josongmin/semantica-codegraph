@@ -12,4 +12,3 @@ export * from "./edge_cases";
 export * from "./weird_patterns";
 export * from "./advanced_patterns";
 export * from "./framework_patterns";
-

@@ -609,4 +609,3 @@ class ReflectiveClass {
     throw new Error(`Method ${methodName} not found`);
   }
 }
-

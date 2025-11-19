@@ -18,21 +18,25 @@ class APIError(Exception):
 
 def require_auth(func):
     """인증 필요 데코레이터"""
+
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        if not hasattr(self, 'current_user') or self.current_user is None:
+        if not hasattr(self, "current_user") or self.current_user is None:
             raise APIError("인증이 필요합니다", 401)
         return func(self, *args, **kwargs)
+
     return wrapper
 
 
 def require_admin(func):
     """관리자 권한 필요 데코레이터"""
+
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        if not hasattr(self, 'current_user') or not isinstance(self.current_user, User):
+        if not hasattr(self, "current_user") or not isinstance(self.current_user, User):
             raise APIError("관리자 권한이 필요합니다", 403)
         return func(self, *args, **kwargs)
+
     return wrapper
 
 
@@ -89,27 +93,14 @@ class OrderAPI:
             raise APIError("사용자를 찾을 수 없습니다", 404)
 
         product_objects = [
-            Product(
-                id=p["id"],
-                name=p["name"],
-                price=p["price"],
-                stock=p.get("stock", 0)
-            )
+            Product(id=p["id"], name=p["name"], price=p["price"], stock=p.get("stock", 0))
             for p in products
         ]
 
-        order = self.order_service.create_order(
-            order_id,
-            self.current_user.name,
-            product_objects
-        )
+        order = self.order_service.create_order(order_id, self.current_user.name, product_objects)
 
         if order:
-            return {
-                "success": True,
-                "order_id": order.order_id,
-                "total": order.calculate_total()
-            }
+            return {"success": True, "order_id": order.order_id, "total": order.calculate_total()}
         raise APIError("주문 생성 실패", 500)
 
     @require_auth
@@ -120,7 +111,7 @@ class OrderAPI:
             return {
                 "order_id": order.order_id,
                 "total": order.calculate_total(),
-                "status": order.status
+                "status": order.status,
             }
         raise APIError("주문을 찾을 수 없습니다", 404)
 
@@ -152,7 +143,9 @@ class APIRouter:
         return list(self.routes.keys())
 
 
-def create_api_response(data: Any, success: bool = True, message: str | None = None) -> dict[str, Any]:
+def create_api_response(
+    data: Any, success: bool = True, message: str | None = None
+) -> dict[str, Any]:
     """API 응답 생성"""
     response = {"success": success, "data": data}
     if message:
@@ -163,14 +156,5 @@ def create_api_response(data: Any, success: bool = True, message: str | None = N
 def handle_api_error(error: Exception) -> dict[str, Any]:
     """API 에러 처리"""
     if isinstance(error, APIError):
-        return {
-            "success": False,
-            "error": error.message,
-            "status_code": error.status_code
-        }
-    return {
-        "success": False,
-        "error": str(error),
-        "status_code": 500
-    }
-
+        return {"success": False, "error": error.message, "status_code": error.status_code}
+    return {"success": False, "error": str(error), "status_code": 500}

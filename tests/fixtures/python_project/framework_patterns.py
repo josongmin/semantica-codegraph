@@ -14,7 +14,7 @@ from typing import Any, Optional
 class Middleware:
     """미들웨어 기본 클래스"""
 
-    def __init__(self, next_middleware: Optional['Middleware'] = None):
+    def __init__(self, next_middleware: Optional["Middleware"] = None):
         self.next = next_middleware
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -83,7 +83,7 @@ class Route:
         path: str,
         handler: Callable,
         methods: list[str] = None,
-        middleware: list[Middleware] = None
+        middleware: list[Middleware] = None,
     ):
         self.path = path
         self.handler = handler
@@ -93,8 +93,8 @@ class Route:
 
     def _compile_pattern(self, path: str) -> re.Pattern:
         """경로 패턴 컴파일"""
-        pattern = re.sub(r'\{(\w+)\}', r'(?P<\1>[^/]+)', path)
-        return re.compile(f'^{pattern}$')
+        pattern = re.sub(r"\{(\w+)\}", r"(?P<\1>[^/]+)", path)
+        return re.compile(f"^{pattern}$")
 
     def matches(self, path: str) -> dict[str, str] | None:
         """경로 매칭"""
@@ -115,7 +115,7 @@ class Router:
         path: str,
         handler: Callable,
         methods: list[str] = None,
-        middleware: list[Middleware] = None
+        middleware: list[Middleware] = None,
     ):
         """라우트 추가"""
         route = Route(path, handler, methods, middleware)
@@ -511,15 +511,15 @@ class Specification(ABC):
     def is_satisfied_by(self, candidate: Any) -> bool:
         pass
 
-    def and_spec(self, other: 'Specification') -> 'Specification':
+    def and_spec(self, other: "Specification") -> "Specification":
         """AND 연산"""
         return AndSpecification(self, other)
 
-    def or_spec(self, other: 'Specification') -> 'Specification':
+    def or_spec(self, other: "Specification") -> "Specification":
         """OR 연산"""
         return OrSpecification(self, other)
 
-    def not_spec(self) -> 'Specification':
+    def not_spec(self) -> "Specification":
         """NOT 연산"""
         return NotSpecification(self)
 
@@ -573,7 +573,7 @@ class Pipeline:
     def __init__(self):
         self.stages: list[Callable] = []
 
-    def add_stage(self, stage: Callable) -> 'Pipeline':
+    def add_stage(self, stage: Callable) -> "Pipeline":
         """스테이지 추가"""
         self.stages.append(stage)
         return self
@@ -597,23 +597,23 @@ class QueryBuilder:
         self._order_by: list[str] = []
         self._limit: int | None = None
 
-    def select(self, *columns: str) -> 'QueryBuilder':
+    def select(self, *columns: str) -> "QueryBuilder":
         self._select.extend(columns)
         return self
 
-    def from_table(self, table: str) -> 'QueryBuilder':
+    def from_table(self, table: str) -> "QueryBuilder":
         self._from_table = table
         return self
 
-    def where(self, condition: str) -> 'QueryBuilder':
+    def where(self, condition: str) -> "QueryBuilder":
         self._where.append(condition)
         return self
 
-    def order_by(self, *columns: str) -> 'QueryBuilder':
+    def order_by(self, *columns: str) -> "QueryBuilder":
         self._order_by.extend(columns)
         return self
 
-    def limit(self, n: int) -> 'QueryBuilder':
+    def limit(self, n: int) -> "QueryBuilder":
         self._limit = n
         return self
 
@@ -631,7 +631,3 @@ class QueryBuilder:
         if self._limit:
             parts.append(f"LIMIT {self._limit}")
         return " ".join(parts)
-
-
-
-

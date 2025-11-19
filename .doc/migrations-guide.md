@@ -68,4 +68,3 @@ connection_string = (
     f"password={config.postgres_password}"
 )
 ```
-

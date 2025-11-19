@@ -8,6 +8,7 @@ from typing import Any
 @dataclass
 class DatabaseConfig:
     """데이터베이스 설정"""
+
     host: str = "localhost"
     port: int = 5432
     database: str = "mydb"
@@ -17,12 +18,15 @@ class DatabaseConfig:
     @property
     def connection_string(self) -> str:
         """연결 문자열 생성"""
-        return f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
+        return (
+            f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
+        )
 
 
 @dataclass
 class APIConfig:
     """API 설정"""
+
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = False
@@ -33,6 +37,7 @@ class APIConfig:
 @dataclass
 class CacheConfig:
     """캐시 설정"""
+
     enabled: bool = True
     backend: str = "redis"
     host: str = "localhost"
@@ -43,6 +48,7 @@ class CacheConfig:
 @dataclass
 class AppConfig:
     """애플리케이션 설정"""
+
     app_name: str = "MyApp"
     version: str = "1.0.0"
     environment: str = "development"
@@ -81,13 +87,9 @@ class AppConfig:
             "database": {
                 "host": self.database.host,
                 "port": self.database.port,
-                "database": self.database.database
+                "database": self.database.database,
             },
-            "api": {
-                "host": self.api.host,
-                "port": self.api.port,
-                "debug": self.api.debug
-            }
+            "api": {"host": self.api.host, "port": self.api.port, "debug": self.api.debug},
         }
 
 
@@ -126,4 +128,3 @@ class ConfigManager:
 
 # 전역 설정 인스턴스
 config_manager = ConfigManager()
-

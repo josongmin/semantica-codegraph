@@ -59,4 +59,3 @@ export async function fetchUsers(): Promise<User[]> {
 type UserRole = "admin" | "user" | "guest";
 
 export type UserWithRole = User & { role: UserRole };
-

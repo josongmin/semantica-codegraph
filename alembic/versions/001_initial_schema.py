@@ -5,6 +5,7 @@ Revises:
 Create Date: 2024-01-01 00:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -95,4 +96,3 @@ def downgrade() -> None:
     # 테이블 삭제
     op.drop_table("code_edges")
     op.drop_table("code_nodes")
-

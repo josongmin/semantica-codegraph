@@ -1,2 +1,1 @@
 """Parser tests"""
-

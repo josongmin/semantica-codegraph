@@ -6,7 +6,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any, TypeVar
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def calculate_total(items: list[dict[str, Any]]) -> float:
@@ -17,12 +17,11 @@ def calculate_total(items: list[dict[str, Any]]) -> float:
     return total
 
 
-def filter_by_price(items: list[dict[str, Any]], min_price: float, max_price: float) -> list[dict[str, Any]]:
+def filter_by_price(
+    items: list[dict[str, Any]], min_price: float, max_price: float
+) -> list[dict[str, Any]]:
     """가격 범위로 필터링"""
-    return [
-        item for item in items
-        if min_price <= item.get("price", 0.0) <= max_price
-    ]
+    return [item for item in items if min_price <= item.get("price", 0.0) <= max_price]
 
 
 def group_by_category(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -38,6 +37,7 @@ def group_by_category(items: list[dict[str, Any]]) -> dict[str, list[dict[str, A
 
 def timing_decorator(func: Callable) -> Callable:
     """실행 시간 측정 데코레이터"""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         start = time.time()
@@ -45,11 +45,13 @@ def timing_decorator(func: Callable) -> Callable:
         end = time.time()
         print(f"{func.__name__} 실행 시간: {end - start:.4f}초")
         return result
+
     return wrapper
 
 
 def retry(max_attempts: int = 3, delay: float = 1.0):
     """재시도 데코레이터"""
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -64,7 +66,9 @@ def retry(max_attempts: int = 3, delay: float = 1.0):
                     else:
                         raise last_exception
             return None
+
         return wrapper
+
     return decorator
 
 
@@ -75,11 +79,7 @@ def process_data(data: list[dict[str, Any]]) -> dict[str, Any]:
     filtered = filter_by_price(data, 0, 1000)
     grouped = group_by_category(data)
 
-    return {
-        "total": total,
-        "filtered_count": len(filtered),
-        "categories": list(grouped.keys())
-    }
+    return {"total": total, "filtered_count": len(filtered), "categories": list(grouped.keys())}
 
 
 async def fetch_data(url: str) -> dict[str, Any] | None:
@@ -151,4 +151,3 @@ def find_min(items: list[T], key: Callable[[T], Any] | None = None) -> T | None:
     if key:
         return min(items, key=key)
     return min(items)
-

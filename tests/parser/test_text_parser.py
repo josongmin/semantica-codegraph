@@ -1,6 +1,5 @@
 """TextParser 테스트"""
 
-
 import pytest
 
 from src.core.enums import NodeKind
@@ -18,13 +17,16 @@ class TestTextParser:
     def markdown_file(self, tmp_path):
         """임시 마크다운 파일 생성"""
         md_file = tmp_path / "README.md"
-        md_file.write_text("""# Test Document
+        md_file.write_text(
+            """# Test Document
 
 This is a test markdown file.
 
 ## Section 1
 Content here.
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
         return md_file
 
     @pytest.fixture
@@ -79,7 +81,7 @@ Content here.
         """인코딩 에러 처리 (latin-1, cp949 등)"""
         # UTF-8이 아닌 파일 생성
         bad_file = tmp_path / "bad_encoding.txt"
-        bad_file.write_bytes(b'\xff\xfe\x00\x00')  # 잘못된 인코딩
+        bad_file.write_bytes(b"\xff\xfe\x00\x00")  # 잘못된 인코딩
 
         file_meta = {
             "repo_id": "test_repo",
@@ -168,4 +170,3 @@ Content here.
         assert "한글" in symbol.attrs["text"]
         assert "🎉" in symbol.attrs["text"]
         assert "&nbsp;" in symbol.attrs["text"]
-

@@ -32,8 +32,13 @@ src/                    # 라이브러리 코드 (코드 RAG 엔진영역)
 
 apps/                   # 실행 가능한 애플리케이션들
 ├── cli/               # CLI 도구
-├── mcp_server/        # MCP 서버
+├── mcp_server/        # MCP 서버 (agent와의 통신 인터페이스)
 └── api/               # HTTP API 서버
+
+agent/                  # 별도 모듈 (향후 추가 예정)
+├── orchestrator.py    # LangGraph 워크플로우
+├── prompts.py         # 프롬프트 템플릿
+└── memory.py          # 대화 메모리 관리
 ```
 
 ## 주요 기술 스택
@@ -46,14 +51,25 @@ apps/                   # 실행 가능한 애플리케이션들
 
 ## 핵심 컴포넌트
 
+### MCP 서버 (Model Context Protocol)
+- **역할**: agent 모듈과의 통신 인터페이스
+- **제공 Tools**:
+  - `list_repositories`: 저장소 목록
+  - `search_code`: 하이브리드 검색
+  - `find_definition`: 심볼 정의 찾기
+  - `explore_graph`: 관계 탐색
+  - `get_context`: 컨텍스트 패킹
+- **통신 방식**: stdio (MCP SDK)
+- **참고 문서**: `.temp/mcp-interface.md`
+
 ### 인덱싱 파이프라인 (IndexingPipeline)
-- **동기/비동기 지원**: 
+- **동기/비동기 지원**:
   - `index_repository()`: CLI, 동기 환경용
   - `index_repository_async()`: FastAPI, async 환경용 (asyncio.run 충돌 방지)
 - **순차/병렬 파싱**: 파일 수에 따라 자동 선택 (threshold: 5개)
 - **DI 패턴 일관성**: IRBuilder는 메인 프로세스에서만 사용 (병렬 worker는 파싱만 수행)
 - **파싱 캐시**: 순차/병렬 경로 모두 ParseCache 지원 (파일 해시 기반)
-- **임베딩 최적화**: 
+- **임베딩 최적화**:
   - 비동기 배치 처리 (중복 제거)
   - 모델별 batch_size 최적화 (Mistral:200, OpenAI:150)
   - max_concurrent로 동시성 제어 (기본값:3)
@@ -76,10 +92,15 @@ apps/                   # 실행 가능한 애플리케이션들
   - `core/ports.py`: 인프라 레이어 포트 (RepoScanner, Parser, GraphStore, ChunkStore, EmbeddingStore)
   - `search/ports/`: 검색 도메인 포트 (LexicalSearch, SemanticSearch, GraphSearch, Ranker)
 - 오픈소스 활용 원칙:
-  - 자주 사용되는 기능이나 검증된 로직이 오픈소스로 존재하면 최대한 활용
+  - **SOTA 및 검증된 오픈소스 라이브러리 우선 사용**
+    - LangChain: LLM 체이닝, 프롬프트 관리, 문서 로더
+    - LangGraph: LLM 에이전트 노드 관리, 워크플로우 오케스트레이션
+    - LlamaIndex: 인덱싱, 쿼리 엔진, RAG 파이프라인
+    - LiteLLM: 멀티 LLM 프로바이더 통합, 토큰 카운팅
+    - 기타 검증된 라이브러리 (Haystack, DSPy 등)
   - 직접 구현하기 전에 관련 오픈소스 라이브러리/프로젝트를 먼저 검토
   - 오픈소스를 활용할 때는 프로젝트 아키텍처(포트/어댑터 패턴)에 맞게 래핑하여 사용
-  - 예: 파싱 캐시, 증분 인덱싱, 파일 해시 계산 등은 검증된 오픈소스 활용 우선
+  - 예: 파싱 캐시, 증분 인덱싱, 파일 해시 계산, RAG 파이프라인 등은 검증된 오픈소스 활용 우선
 - 문서화 규칙:
   - 마크다운 파일은 `.temp` 폴더에 생성
   - **핵심만 간결하게 작성** (필수 내용만 포함)
@@ -138,4 +159,3 @@ apps/                   # 실행 가능한 애플리케이션들
 ### 참고 문서
 - `.temp/cody-comparison-rag-improvements.md`: 상세 비교 분석
 - `.temp/rag-improvement-action-plan.md`: 단계별 구현 계획
-

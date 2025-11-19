@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from src.core.config import Config
 from src.core.models import Candidate, ChunkResult, LocationContext, RepoId
 from src.core.ports import ChunkStorePort
+from src.search.adapters.fusion import FusionStrategy, WeightedFusion
 from src.search.ports.fuzzy_search_port import FuzzySearchPort
 from src.search.ports.graph_search_port import GraphSearchPort
 from src.search.ports.lexical_search_port import LexicalSearchPort
@@ -36,6 +37,7 @@ class HybridRetriever:
         fuzzy_search: FuzzySearchPort | None = None,
         chunk_store: ChunkStorePort | None = None,
         config: Config | None = None,
+        fusion_strategy: FusionStrategy | None = None,
     ):
         """
         Args:
@@ -45,6 +47,7 @@ class HybridRetriever:
             fuzzy_search: Fuzzy 검색 포트 (옵션)
             chunk_store: Chunk 저장소 (옵션, fuzzy 매핑용)
             config: 설정 (옵션, 없으면 기본값)
+            fusion_strategy: Fusion 전략 (옵션, 없으면 WeightedFusion)
         """
         self.lexical_search = lexical_search
         self.semantic_search = semantic_search
@@ -52,6 +55,7 @@ class HybridRetriever:
         self.fuzzy_search = fuzzy_search
         self.chunk_store = chunk_store
         self.config = config or Config()
+        self.fusion = fusion_strategy or WeightedFusion()
 
     def retrieve(
         self,
@@ -150,7 +154,9 @@ class HybridRetriever:
                     )
 
                     # 노드를 Candidate로 변환
-                    graph_neighbors = neighbors_with_edges[: int(k * self.config.graph_fetch_multiplier)]
+                    graph_neighbors = neighbors_with_edges[
+                        : int(k * self.config.graph_fetch_multiplier)
+                    ]
                     for neighbor_node, edge_type, depth in graph_neighbors:
                         # Edge 타입별 가중치 적용
                         edge_weight = self.config.graph_edge_weights.get(edge_type, 0.5)
@@ -169,7 +175,9 @@ class HybridRetriever:
                         if chunk_id in candidates:
                             # 기존 점수보다 높으면 업데이트 (여러 경로로 도달 가능)
                             existing_score = candidates[chunk_id].features.get("graph_score", 0)
-                            candidates[chunk_id].features["graph_score"] = max(existing_score, normalized_score)
+                            candidates[chunk_id].features["graph_score"] = max(
+                                existing_score, normalized_score
+                            )
                         else:
                             candidates[chunk_id] = Candidate(
                                 repo_id=repo_id,
@@ -229,7 +237,9 @@ class HybridRetriever:
 
                                         if chunk_id in candidates:
                                             # 기존 점수보다 높으면 업데이트
-                                            existing_score = candidates[chunk_id].features.get("fuzzy_score", 0)
+                                            existing_score = candidates[chunk_id].features.get(
+                                                "fuzzy_score", 0
+                                            )
                                             candidates[chunk_id].features["fuzzy_score"] = max(
                                                 existing_score, distributed_score
                                             )
@@ -249,7 +259,9 @@ class HybridRetriever:
                                     span = (0, 0, 0, 0)
 
                                     if chunk_id in candidates:
-                                        candidates[chunk_id].features["fuzzy_score"] = base_fuzzy_score
+                                        candidates[chunk_id].features[
+                                            "fuzzy_score"
+                                        ] = base_fuzzy_score
                                     else:
                                         candidates[chunk_id] = Candidate(
                                             repo_id=repo_id,
@@ -308,8 +320,7 @@ class HybridRetriever:
         # Lexical 정규화
         if lexical_results_raw:
             lexical_normalized = self._normalize_scores(
-                [(r.chunk_id, r.score) for r in lexical_results_raw],
-                method=normalization_method
+                [(r.chunk_id, r.score) for r in lexical_results_raw], method=normalization_method
             )
             for result in lexical_results_raw:
                 normalized_score = lexical_normalized.get(result.chunk_id, 0)
@@ -323,8 +334,7 @@ class HybridRetriever:
         # Semantic 정규화
         if semantic_results_raw:
             semantic_normalized = self._normalize_scores(
-                [(r.chunk_id, r.score) for r in semantic_results_raw],
-                method=normalization_method
+                [(r.chunk_id, r.score) for r in semantic_results_raw], method=normalization_method
             )
             for result in semantic_results_raw:
                 normalized_score = semantic_normalized.get(result.chunk_id, 0)
@@ -338,24 +348,10 @@ class HybridRetriever:
         # 6. Candidate 리스트로 변환
         candidate_list = list(candidates.values())
 
-        # 7. 총 점수 계산 (정규화된 점수에 weight 적용)
-        for candidate in candidate_list:
-            total_score = (
-                candidate.features.get("lexical_score", 0) * weights.get("lexical", 0)
-                + candidate.features.get("semantic_score", 0) * weights.get("semantic", 0)
-                + candidate.features.get("graph_score", 0) * weights.get("graph", 0)
-                + candidate.features.get("fuzzy_score", 0) * weights.get("fuzzy", 0)
-            )
-            candidate.features["total_score"] = total_score
-            candidate.features["final_score"] = total_score
+        # 7. Weighted Fusion 적용 (점수 결합 및 정렬)
+        result = self.fusion.fuse_and_sort(candidate_list, weights, k=k)
 
-        # 8. 점수 기준 정렬
-        candidate_list.sort(key=lambda c: c.features.get("final_score", 0), reverse=True)
-
-        # 9. 상위 k개 반환
-        result = candidate_list[:k]
         logger.info(f"Retrieved {len(result)} candidates")
-
         return result
 
     def _result_to_candidate(
@@ -383,9 +379,7 @@ class HybridRetriever:
         )
 
     def _normalize_scores(
-        self,
-        results: list[tuple[str, float]],
-        method: str = "rank"
+        self, results: list[tuple[str, float]], method: str = "rank"
     ) -> dict[str, float]:
         """
         검색 결과 점수를 정규화
@@ -403,10 +397,7 @@ class HybridRetriever:
         if method == "rank":
             # Rank-based: 순위를 역순으로 정규화 (1등이 1.0)
             n = len(results)
-            return {
-                id_: (n - rank) / n
-                for rank, (id_, _) in enumerate(results)
-            }
+            return {id_: (n - rank) / n for rank, (id_, _) in enumerate(results)}
 
         elif method == "minmax":
             # Min-Max: 최소-최대 범위로 정규화
@@ -417,14 +408,12 @@ class HybridRetriever:
             if max_score == min_score:
                 return {id_: 1.0 for id_, _ in results}
 
-            return {
-                id_: (score - min_score) / (max_score - min_score)
-                for id_, score in results
-            }
+            return {id_: (score - min_score) / (max_score - min_score) for id_, score in results}
 
         elif method == "zscore":
             # Z-score: 평균과 표준편차로 정규화
             import statistics
+
             scores = [s for _, s in results]
             mean = statistics.mean(scores)
 
@@ -433,10 +422,7 @@ class HybridRetriever:
                 if stdev == 0:
                     return {id_: 1.0 for id_, _ in results}
 
-                normalized = {
-                    id_: (score - mean) / stdev
-                    for id_, score in results
-                }
+                normalized = {id_: (score - mean) / stdev for id_, score in results}
 
                 # Z-score는 음수일 수 있으므로 0~1로 재조정
                 z_scores = list(normalized.values())
@@ -446,10 +432,7 @@ class HybridRetriever:
                 if max_z == min_z:
                     return dict.fromkeys(normalized, 1.0)
 
-                return {
-                    id_: (z - min_z) / (max_z - min_z)
-                    for id_, z in normalized.items()
-                }
+                return {id_: (z - min_z) / (max_z - min_z) for id_, z in normalized.items()}
             except statistics.StatisticsError:
                 return {id_: 1.0 for id_, _ in results}
 
@@ -612,10 +595,7 @@ class HybridRetriever:
 
         # 6. 최소 길이 필터 & 불용어 재필터 & 중복 제거
         min_length = self.config.fuzzy_min_token_length
-        tokens = [
-            t for t in tokens
-            if len(t) >= min_length and t.lower() not in stopwords
-        ]
+        tokens = [t for t in tokens if len(t) >= min_length and t.lower() not in stopwords]
         tokens = list(dict.fromkeys(tokens))  # 순서 유지하면서 중복 제거
 
         return tokens
@@ -679,20 +659,9 @@ class HybridRetriever:
                 except Exception as e:
                     logger.error(f"{search_type} search failed: {e}")
 
-        # 총 점수 계산 (정규화된 점수에 weight 적용) 및 정렬
+        # Weighted Fusion 적용 (점수 결합 및 정렬)
         candidate_list = list(candidates.values())
-        for candidate in candidate_list:
-            total_score = (
-                candidate.features.get("lexical_score", 0) * weights.get("lexical", 0)
-                + candidate.features.get("semantic_score", 0) * weights.get("semantic", 0)
-                + candidate.features.get("graph_score", 0) * weights.get("graph", 0)
-                + candidate.features.get("fuzzy_score", 0) * weights.get("fuzzy", 0)
-            )
-            candidate.features["total_score"] = total_score
-            candidate.features["final_score"] = total_score  # final_score도 설정
-
-        candidate_list.sort(key=lambda c: c.features.get("final_score", 0), reverse=True)
-        result = candidate_list[:k]
+        result = self.fusion.fuse_and_sort(candidate_list, weights, k=k)
 
         logger.info(f"Retrieved {len(result)} candidates (parallel)")
         return result
@@ -852,7 +821,9 @@ class HybridRetriever:
 
                                     if chunk_id in candidates_map:
                                         # 기존 점수보다 높으면 업데이트
-                                        existing_score = candidates_map[chunk_id].features.get("fuzzy_score", 0)
+                                        existing_score = candidates_map[chunk_id].features.get(
+                                            "fuzzy_score", 0
+                                        )
                                         candidates_map[chunk_id].features["fuzzy_score"] = max(
                                             existing_score, distributed_score
                                         )

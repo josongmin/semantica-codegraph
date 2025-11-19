@@ -289,8 +289,7 @@ class ZoektAdapter(LexicalSearchPort):
                 continue
 
         logger.info(
-            f"Zoekt search completed: {len(files)} files, "
-            f"{len(chunk_results)} chunks mapped"
+            f"Zoekt search completed: {len(files)} files, {len(chunk_results)} chunks mapped"
         )
         return chunk_results[:k]
 
@@ -311,4 +310,3 @@ class ZoektAdapter(LexicalSearchPort):
 
         # TODO: 관리 API 구현 시 호출
         # self._http_request("DELETE", f"/api/repos/{repo_id}")
-

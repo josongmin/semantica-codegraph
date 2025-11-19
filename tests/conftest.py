@@ -1,4 +1,5 @@
 """공통 테스트 fixture"""
+
 import logging
 import os
 
@@ -61,23 +62,17 @@ def cleanup_test_data(request):
 
         # 테스트용 repo_id 패턴 삭제
         test_patterns = [
-            'test%',
-            'my-custom-id%',
+            "test%",
+            "my-custom-id%",
         ]
 
         for pattern in test_patterns:
             # repo_metadata 테이블에서 삭제 (CASCADE로 다른 테이블도 함께 삭제됨)
-            cursor.execute(
-                "DELETE FROM repo_metadata WHERE repo_id LIKE %s",
-                (pattern,)
-            )
+            cursor.execute("DELETE FROM repo_metadata WHERE repo_id LIKE %s", (pattern,))
 
             # 명시적으로 다른 테이블도 정리 (CASCADE가 없는 경우를 대비)
-            for table in ['code_chunks', 'embeddings', 'code_edges', 'code_nodes']:
-                cursor.execute(
-                    f"DELETE FROM {table} WHERE repo_id LIKE %s",
-                    (pattern,)
-                )
+            for table in ["code_chunks", "embeddings", "code_edges", "code_nodes"]:
+                cursor.execute(f"DELETE FROM {table} WHERE repo_id LIKE %s", (pattern,))
 
         conn.commit()
         deleted_count = cursor.rowcount
@@ -109,13 +104,14 @@ def test_repo_metadata():
         total_files=0,
         total_nodes=0,
         total_chunks=0,
-        attrs={}
+        attrs={},
     )
 
 
 @pytest.fixture
 def ensure_test_repo():
     """테스트 저장소가 DB에 존재하도록 보장"""
+
     def _ensure(conn_str: str, repo_id: str = "test-repo"):
         store = RepoMetadataStore(conn_str)
         metadata = RepoMetadata(
@@ -126,10 +122,11 @@ def ensure_test_repo():
             total_files=0,
             total_nodes=0,
             total_chunks=0,
-            attrs={}
+            attrs={},
         )
         store.save(metadata)
         return metadata
+
     return _ensure
 
 
@@ -161,4 +158,3 @@ def typescript_test_repo():
         pytest.skip(f"TypeScript fixture not found at {fixture_path}")
 
     return fixture_path
-

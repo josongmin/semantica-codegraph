@@ -72,8 +72,8 @@ class EmbeddingService:
             self.client = Mistral(api_key=self.api_key)
             self.embed_func = self._embed_mistral
             logger.info("Initialized Mistral Codestral Embed")
-        except ImportError:
-            raise ImportError("Please install: pip install mistralai")
+        except ImportError as e:
+            raise ImportError("Please install: pip install mistralai") from e
 
     def _init_openai(self):
         """OpenAI 초기화"""
@@ -86,8 +86,8 @@ class EmbeddingService:
             self.client = OpenAI(api_key=self.api_key)
             self.embed_func = self._embed_openai
             logger.info(f"Initialized OpenAI {self.model.value}")
-        except ImportError:
-            raise ImportError("Please install: pip install openai")
+        except ImportError as e:
+            raise ImportError("Please install: pip install openai") from e
 
     def _init_sentence_transformer(self):
         """Sentence Transformer 초기화"""
@@ -97,8 +97,8 @@ class EmbeddingService:
             self.st_model = SentenceTransformer(self.model.value)
             self.embed_func = self._embed_sentence_transformer
             logger.info(f"Initialized Sentence Transformer {self.model.value}")
-        except ImportError:
-            raise ImportError("Please install: pip install sentence-transformers")
+        except ImportError as e:
+            raise ImportError("Please install: pip install sentence-transformers") from e
 
     def _init_codebert(self):
         """CodeBERT 초기화"""
@@ -109,8 +109,8 @@ class EmbeddingService:
             self.codebert_model = AutoModel.from_pretrained(self.model.value)
             self.embed_func = self._embed_codebert
             logger.info(f"Initialized CodeBERT {self.model.value}")
-        except ImportError:
-            raise ImportError("Please install: pip install transformers torch")
+        except ImportError as e:
+            raise ImportError("Please install: pip install transformers torch") from e
 
     def embed_text(self, text: str) -> list[float]:
         """
@@ -175,19 +175,70 @@ class EmbeddingService:
         Returns:
             벡터 리스트
         """
-        try:
-            response = self.client.embeddings.create(
-                model=self.model.value,
-                inputs=texts,  # Mistral은 'inputs' 사용
-            )
+        # Mistral 최대 토큰 제한
+        MAX_TOKENS_PER_TEXT = 8192  # 개별 텍스트 최대 토큰
+        MAX_TOKENS_PER_BATCH = 16384  # 배치 전체 최대 토큰 (안전 마진 포함)
 
-            vectors = [data.embedding for data in response.data]
-            logger.debug(f"Mistral embedded {len(texts)} texts")
-            return vectors
+        # 토큰 수 추정 및 텍스트 자르기
+        processed_texts = []
+        for text in texts:
+            # 간단한 토큰 추정: 1토큰 ≈ 4글자
+            estimated_tokens = len(text) // 4
 
-        except Exception as e:
-            logger.error(f"Mistral embedding failed: {e}")
-            raise
+            if estimated_tokens > MAX_TOKENS_PER_TEXT:
+                # 최대 토큰에 맞게 텍스트 자르기
+                max_chars = MAX_TOKENS_PER_TEXT * 4
+                truncated = text[:max_chars]
+                logger.warning(f"Text truncated from {estimated_tokens} to {MAX_TOKENS_PER_TEXT} tokens")
+                processed_texts.append(truncated)
+            else:
+                processed_texts.append(text)
+
+        # 배치 전체 토큰 수 확인 및 분할
+        all_vectors = []
+        current_batch = []
+        current_batch_tokens = 0
+
+        for text in processed_texts:
+            text_tokens = len(text) // 4
+            
+            # 현재 배치에 추가하면 제한 초과하는 경우
+            if current_batch and (current_batch_tokens + text_tokens > MAX_TOKENS_PER_BATCH):
+                # 현재 배치 처리
+                try:
+                    response = self.client.embeddings.create(
+                        model=self.model.value,
+                        inputs=current_batch,
+                    )
+                    batch_vectors = [data.embedding for data in response.data]
+                    all_vectors.extend(batch_vectors)
+                    logger.debug(f"Mistral embedded {len(current_batch)} texts ({current_batch_tokens} tokens)")
+                except Exception as e:
+                    logger.error(f"Mistral embedding failed: {e}")
+                    raise
+                
+                # 새 배치 시작
+                current_batch = [text]
+                current_batch_tokens = text_tokens
+            else:
+                current_batch.append(text)
+                current_batch_tokens += text_tokens
+
+        # 마지막 배치 처리
+        if current_batch:
+            try:
+                response = self.client.embeddings.create(
+                    model=self.model.value,
+                    inputs=current_batch,
+                )
+                batch_vectors = [data.embedding for data in response.data]
+                all_vectors.extend(batch_vectors)
+                logger.debug(f"Mistral embedded {len(current_batch)} texts ({current_batch_tokens} tokens)")
+            except Exception as e:
+                logger.error(f"Mistral embedding failed: {e}")
+                raise
+
+        return all_vectors
 
     def _embed_openai(self, texts: list[str]) -> list[list[float]]:
         """
@@ -199,10 +250,28 @@ class EmbeddingService:
         Returns:
             벡터 리스트
         """
+        # OpenAI 최대 토큰 제한: 8,191 (모델별로 다름)
+        MAX_TOKENS = 8191
+
+        # 토큰 수 추정 및 텍스트 자르기
+        processed_texts = []
+        for text in texts:
+            # 간단한 토큰 추정: 1토큰 ≈ 4글자
+            estimated_tokens = len(text) // 4
+
+            if estimated_tokens > MAX_TOKENS:
+                # 최대 토큰에 맞게 텍스트 자르기
+                max_chars = MAX_TOKENS * 4
+                truncated = text[:max_chars]
+                logger.warning(f"Text truncated from {estimated_tokens} to {MAX_TOKENS} tokens")
+                processed_texts.append(truncated)
+            else:
+                processed_texts.append(text)
+
         try:
             response = self.client.embeddings.create(
                 model=self.model.value,
-                input=texts,  # OpenAI는 'input' 사용
+                input=processed_texts,  # OpenAI는 'input' 사용
                 dimensions=self.dimension,  # 선택적 차원 축소
             )
 

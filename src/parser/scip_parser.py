@@ -30,11 +30,7 @@ class ScipParser(ParserPort):
         Tree-sitter로 기본 구조를 파악한 후, SCIP로 관계를 보강하는 방식 권장.
     """
 
-    def __init__(
-        self,
-        scip_index_path: Path | None = None,
-        auto_index: bool = False
-    ):
+    def __init__(self, scip_index_path: Path | None = None, auto_index: bool = False):
         """
         Args:
             scip_index_path: SCIP 인덱스 파일/디렉토리 경로
@@ -47,10 +43,7 @@ class ScipParser(ParserPort):
         self._index_data: dict | None = None
         self._is_directory_format: bool = False
 
-    def parse_file(
-        self,
-        file_meta: dict
-    ) -> tuple[list[RawSymbol], list[RawRelation]]:
+    def parse_file(self, file_meta: dict) -> tuple[list[RawSymbol], list[RawRelation]]:
         """
         SCIP 인덱스에서 파일 정보 추출
 
@@ -157,7 +150,7 @@ class ScipParser(ParserPort):
                     ["scip-python", "index", "--project-dir", str(repo_path)],
                     capture_output=True,
                     text=True,
-                    timeout=300  # 5분 타임아웃
+                    timeout=300,  # 5분 타임아웃
                 )
 
                 if result.returncode == 0:
@@ -184,7 +177,7 @@ class ScipParser(ParserPort):
                     cwd=str(repo_path),
                     capture_output=True,
                     text=True,
-                    timeout=300
+                    timeout=300,
                 )
 
                 if result.returncode == 0:
@@ -195,7 +188,9 @@ class ScipParser(ParserPort):
                     return False
 
             except FileNotFoundError:
-                logger.error("scip-typescript not found. Install: npm install -g @sourcegraph/scip-typescript")
+                logger.error(
+                    "scip-typescript not found. Install: npm install -g @sourcegraph/scip-typescript"
+                )
                 return False
 
         logger.warning(f"Unknown project type in {repo_root}")
@@ -235,7 +230,7 @@ class ScipParser(ParserPort):
                 ["scip", "snapshot", "--from", str(self.scip_index_path)],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
 
             if result.returncode == 0:
@@ -268,7 +263,7 @@ class ScipParser(ParserPort):
         # metadata.json 읽기
         if metadata_file.exists():
             try:
-                with open(metadata_file) as f:
+                with metadata_file.open() as f:
                     metadata = json.load(f)
                     document_data.update(metadata)
             except json.JSONDecodeError as e:
@@ -281,7 +276,7 @@ class ScipParser(ParserPort):
                     ["scip", "snapshot", "--from", str(symbols_file)],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
                 )
                 if result.returncode == 0:
                     snapshot = json.loads(result.stdout)
@@ -300,7 +295,7 @@ class ScipParser(ParserPort):
                     ["scip", "snapshot", "--from", str(occurrences_file)],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
                 )
                 if result.returncode == 0:
                     snapshot = json.loads(result.stdout)
@@ -318,11 +313,7 @@ class ScipParser(ParserPort):
 
         return None
 
-    def _extract_symbols_from_scip(
-        self,
-        scip_data: dict,
-        file_meta: dict
-    ) -> list[RawSymbol]:
+    def _extract_symbols_from_scip(self, scip_data: dict, file_meta: dict) -> list[RawSymbol]:
         """
         SCIP 데이터에서 심볼 추출
 
@@ -346,28 +337,30 @@ class ScipParser(ParserPort):
             # SymbolInformation 조회
             symbol_info = self._get_symbol_information(scip_data, symbol_str)
 
-            symbols.append(RawSymbol(
-                repo_id=file_meta["repo_id"],
-                file_path=file_meta["path"],
-                language=file_meta["language"],
-                kind=self._scip_kind_to_kind(symbol_info),
-                name=self._extract_symbol_name(symbol_str),
-                span=self._scip_range_to_span(scip_range),
-                attrs={
-                    "scip_symbol": symbol_str,
-                    "signature": symbol_info.get("signature_documentation", {}).get("text") if symbol_info else None,
-                    "documentation": symbol_info.get("documentation", [None])[0] if symbol_info else None,
-                    "kind_string": symbol_info.get("kind") if symbol_info else None
-                }
-            ))
+            symbols.append(
+                RawSymbol(
+                    repo_id=file_meta["repo_id"],
+                    file_path=file_meta["path"],
+                    language=file_meta["language"],
+                    kind=self._scip_kind_to_kind(symbol_info),
+                    name=self._extract_symbol_name(symbol_str),
+                    span=self._scip_range_to_span(scip_range),
+                    attrs={
+                        "scip_symbol": symbol_str,
+                        "signature": symbol_info.get("signature_documentation", {}).get("text")
+                        if symbol_info
+                        else None,
+                        "documentation": symbol_info.get("documentation", [None])[0]
+                        if symbol_info
+                        else None,
+                        "kind_string": symbol_info.get("kind") if symbol_info else None,
+                    },
+                )
+            )
 
         return symbols
 
-    def _extract_relations_from_scip(
-        self,
-        scip_data: dict,
-        file_meta: dict
-    ) -> list[RawRelation]:
+    def _extract_relations_from_scip(self, scip_data: dict, file_meta: dict) -> list[RawRelation]:
         """
         SCIP 데이터에서 관계 추출
 
@@ -387,26 +380,24 @@ class ScipParser(ParserPort):
             if not (symbol_roles & 1) and (symbol_roles > 0):
                 relation_type = self._symbol_roles_to_relation_type(symbol_roles)
 
-                relations.append(RawRelation(
-                    repo_id=file_meta["repo_id"],
-                    file_path=file_meta["path"],
-                    language=file_meta["language"],
-                    type=relation_type,
-                    src_span=self._scip_range_to_span(occurrence.get("range", [])),
-                    dst_span=(0, 0, 0, 0),  # 정의 위치는 심볼 조회 필요
-                    attrs={
-                        "target_symbol": occurrence.get("symbol", ""),
-                        "symbol_roles": symbol_roles
-                    }
-                ))
+                relations.append(
+                    RawRelation(
+                        repo_id=file_meta["repo_id"],
+                        file_path=file_meta["path"],
+                        language=file_meta["language"],
+                        type=relation_type,
+                        src_span=self._scip_range_to_span(occurrence.get("range", [])),
+                        dst_span=(0, 0, 0, 0),  # 정의 위치는 심볼 조회 필요
+                        attrs={
+                            "target_symbol": occurrence.get("symbol", ""),
+                            "symbol_roles": symbol_roles,
+                        },
+                    )
+                )
 
         return relations
 
-    def _get_symbol_information(
-        self,
-        scip_data: dict,
-        symbol: str
-    ) -> dict | None:
+    def _get_symbol_information(self, scip_data: dict, symbol: str) -> dict | None:
         """심볼 정보 조회"""
         for symbol_info in scip_data.get("symbols", []):
             if symbol_info.get("symbol") == symbol:
@@ -424,7 +415,7 @@ class ScipParser(ParserPort):
                 scip_range[0],
                 scip_range[1],
                 scip_range[2],
-                scip_range[3] if len(scip_range) > 3 else scip_range[1]
+                scip_range[3] if len(scip_range) > 3 else scip_range[1],
             )
         return (0, 0, 0, 0)
 
@@ -443,7 +434,7 @@ class ScipParser(ParserPort):
             "Variable": "Variable",
             "Constant": "Constant",
             "Module": "Module",
-            "Namespace": "Namespace"
+            "Namespace": "Namespace",
         }
         return kind_map.get(kind, "Unknown")
 
@@ -482,4 +473,3 @@ class ScipParser(ParserPort):
             return "reads"
         else:
             return "references"
-

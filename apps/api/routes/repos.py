@@ -38,7 +38,7 @@ class RepoResponse(BaseModel):
     languages: list[str]
     total_files: int
     total_nodes: int
-    total_edges: int
+    total_chunks: int  # RepoMetadata 실제 필드
     indexing_status: str
     indexed_at: str | None = None
 
@@ -69,7 +69,7 @@ async def index_repository(
             chunks_count=result.total_chunks,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/", response_model=list[RepoResponse])
@@ -82,19 +82,19 @@ async def list_repositories():
                 repo_id=repo.repo_id,
                 name=repo.name,
                 root_path=repo.root_path,
-                git_url=repo.git_url,
-                default_branch=repo.default_branch,
+                git_url=repo.attrs.get("git_url") if repo.attrs else None,
+                default_branch=repo.attrs.get("default_branch", "main") if repo.attrs else "main",
                 languages=repo.languages or [],
                 total_files=repo.total_files,
                 total_nodes=repo.total_nodes,
-                total_edges=repo.total_edges,
+                total_chunks=repo.total_chunks,
                 indexing_status=repo.indexing_status,
                 indexed_at=repo.indexed_at.isoformat() if repo.indexed_at else None,
             )
             for repo in repos
         ]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/{repo_id}", response_model=RepoResponse)
@@ -109,19 +109,19 @@ async def get_repository(repo_id: str):
             repo_id=repo.repo_id,
             name=repo.name,
             root_path=repo.root_path,
-            git_url=repo.git_url,
-            default_branch=repo.default_branch,
+            git_url=repo.attrs.get("git_url") if repo.attrs else None,
+            default_branch=repo.attrs.get("default_branch", "main") if repo.attrs else "main",
             languages=repo.languages or [],
             total_files=repo.total_files,
             total_nodes=repo.total_nodes,
-            total_edges=repo.total_edges,
+            total_chunks=repo.total_chunks,
             indexing_status=repo.indexing_status,
             indexed_at=repo.indexed_at.isoformat() if repo.indexed_at else None,
         )
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/{repo_id}")
@@ -132,7 +132,7 @@ async def delete_repository(repo_id: str):
         bootstrap.graph_store.delete_repo(repo_id)
         return {"status": "deleted", "repo_id": repo_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/{repo_id}/status")
@@ -151,4 +151,4 @@ async def get_indexing_status(repo_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

@@ -261,7 +261,8 @@ class ResourcePool(Generic[T]):
 class Observer(Protocol):
     """옵저버 프로토콜"""
 
-    def update(self, event: str, data: Any) -> None: ...
+    def update(self, event: str, data: Any) -> None:
+        ...
 
 
 class Observable:
@@ -297,7 +298,8 @@ class Observable:
 class Strategy(Protocol):
     """전략 프로토콜"""
 
-    def execute(self, data: Any) -> Any: ...
+    def execute(self, data: Any) -> Any:
+        ...
 
 
 class Context:
@@ -557,7 +559,8 @@ class OldInterface:
 class NewInterface(Protocol):
     """신 인터페이스"""
 
-    def new_method(self, data: dict[str, int]) -> int: ...
+    def new_method(self, data: dict[str, int]) -> int:
+        ...
 
 
 class Adapter:

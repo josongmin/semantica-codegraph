@@ -1,6 +1,5 @@
 """RepoScanner 필터링 테스트 (텍스트 파일 인덱싱)"""
 
-
 import pytest
 
 from src.core.models import RepoConfig
@@ -45,7 +44,7 @@ class TestRepoScannerTextFiltering:
         large_file.write_text("x" * 2_000_000)  # 2MB
 
         # 바이너리 파일
-        (repo / "image.png").write_bytes(b'\x89PNG\r\n\x1a\n\x00\x00')
+        (repo / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00")
 
         return repo
 
@@ -199,7 +198,7 @@ class TestRepoScannerDefenseInDepth:
         text_file.write_text("Hello World", encoding="utf-8")
 
         binary_file = tmp_path / "binary.bin"
-        binary_file.write_bytes(b'\x00\x01\x02\x03')
+        binary_file.write_bytes(b"\x00\x01\x02\x03")
 
         # Private method - tested through scan()
         pass
@@ -222,4 +221,3 @@ class TestRepoScannerDefenseInDepth:
         assert "visible.md" in file_paths
         assert ".hidden.md" not in file_paths
         assert not any(".git" in p for p in file_paths)
-

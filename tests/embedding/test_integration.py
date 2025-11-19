@@ -153,9 +153,9 @@ def test_embed_and_search_integration(test_chunks, embedding_service, chunk_stor
         repo_id="test-repo", vector=query_vector, k=3, filters={"file_path": "calculator.py"}
     )
 
-    assert all(r.file_path == "calculator.py" for r in filtered_results), (
-        "필터링된 결과는 calculator.py만 포함해야 함"
-    )
+    assert all(
+        r.file_path == "calculator.py" for r in filtered_results
+    ), "필터링된 결과는 calculator.py만 포함해야 함"
 
 
 def test_semantic_search_accuracy(test_chunks, embedding_service, chunk_store, vector_store):

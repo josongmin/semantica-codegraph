@@ -44,14 +44,20 @@ def mock_chunk_store():
 
 
 @pytest.fixture
-def hybrid_retriever(mock_lexical_search, mock_semantic_search, mock_graph_search, mock_fuzzy_search, mock_chunk_store):
+def hybrid_retriever(
+    mock_lexical_search,
+    mock_semantic_search,
+    mock_graph_search,
+    mock_fuzzy_search,
+    mock_chunk_store,
+):
     """HybridRetriever 인스턴스"""
     return HybridRetriever(
         lexical_search=mock_lexical_search,
         semantic_search=mock_semantic_search,
         graph_search=mock_graph_search,
         fuzzy_search=mock_fuzzy_search,
-        chunk_store=mock_chunk_store
+        chunk_store=mock_chunk_store,
     )
 
 
@@ -77,7 +83,7 @@ def test_retrieve_sequential_basic(hybrid_retriever, mock_lexical_search, mock_s
             score=0.9,
             source="lexical",
             file_path="test.py",
-            span=(0, 0, 10, 0)
+            span=(0, 0, 10, 0),
         )
     ]
 
@@ -88,7 +94,7 @@ def test_retrieve_sequential_basic(hybrid_retriever, mock_lexical_search, mock_s
             score=0.8,
             source="semantic",
             file_path="test.py",
-            span=(0, 0, 10, 0)
+            span=(0, 0, 10, 0),
         ),
         ChunkResult(
             repo_id=repo_id,
@@ -96,8 +102,8 @@ def test_retrieve_sequential_basic(hybrid_retriever, mock_lexical_search, mock_s
             score=0.7,
             source="semantic",
             file_path="test2.py",
-            span=(0, 0, 5, 0)
-        )
+            span=(0, 0, 5, 0),
+        ),
     ]
 
     # 검색 실행
@@ -106,12 +112,7 @@ def test_retrieve_sequential_basic(hybrid_retriever, mock_lexical_search, mock_s
         query=query,
         k=10,
         location_ctx=None,
-        weights={
-            "lexical": 0.3,
-            "semantic": 0.5,
-            "graph": 0.2,
-            "fuzzy": 0.0
-        }
+        weights={"lexical": 0.3, "semantic": 0.5, "graph": 0.2, "fuzzy": 0.0},
     )
 
     # 검증
@@ -132,10 +133,24 @@ def test_retrieve_with_custom_weights(hybrid_retriever, mock_lexical_search, moc
     query = "test"
 
     mock_lexical_search.search.return_value = [
-        ChunkResult(repo_id=repo_id, chunk_id="chunk-1", score=0.9, source="lexical", file_path="test.py", span=(0, 0, 10, 0))
+        ChunkResult(
+            repo_id=repo_id,
+            chunk_id="chunk-1",
+            score=0.9,
+            source="lexical",
+            file_path="test.py",
+            span=(0, 0, 10, 0),
+        )
     ]
     mock_semantic_search.search.return_value = [
-        ChunkResult(repo_id=repo_id, chunk_id="chunk-2", score=0.8, source="semantic", file_path="test2.py", span=(0, 0, 10, 0))
+        ChunkResult(
+            repo_id=repo_id,
+            chunk_id="chunk-2",
+            score=0.8,
+            source="semantic",
+            file_path="test2.py",
+            span=(0, 0, 10, 0),
+        )
     ]
 
     # Lexical만 사용 (semantic 가중치 0)
@@ -144,12 +159,7 @@ def test_retrieve_with_custom_weights(hybrid_retriever, mock_lexical_search, moc
         query=query,
         k=10,
         location_ctx=None,
-        weights={
-            "lexical": 1.0,
-            "semantic": 0.0,
-            "graph": 0.0,
-            "fuzzy": 0.0
-        }
+        weights={"lexical": 1.0, "semantic": 0.0, "graph": 0.0, "fuzzy": 0.0},
     )
 
     # Lexical 결과만 있어야 함
@@ -164,12 +174,7 @@ def test_retrieve_with_graph_search(hybrid_retriever, mock_graph_search):
     from src.core.models import CodeNode
 
     repo_id = "test-repo"
-    location_ctx = LocationContext(
-        repo_id=repo_id,
-        file_path="test.py",
-        line=10,
-        column=0
-    )
+    location_ctx = LocationContext(repo_id=repo_id, file_path="test.py", line=10, column=0)
 
     # Mock 노드
     current_node = CodeNode(
@@ -180,7 +185,7 @@ def test_retrieve_with_graph_search(hybrid_retriever, mock_graph_search):
         file_path="test.py",
         span=(10, 0, 20, 0),
         name="test_func",
-        text="def test_func(): pass"
+        text="def test_func(): pass",
     )
 
     neighbor_node = CodeNode(
@@ -191,26 +196,19 @@ def test_retrieve_with_graph_search(hybrid_retriever, mock_graph_search):
         file_path="test.py",
         span=(25, 0, 35, 0),
         name="neighbor_func",
-        text="def neighbor_func(): pass"
+        text="def neighbor_func(): pass",
     )
 
     mock_graph_search.get_node_by_location.return_value = current_node
     # expand_neighbors_with_edges는 (CodeNode, edge_type, depth) 튜플 반환
-    mock_graph_search.expand_neighbors_with_edges.return_value = [
-        (neighbor_node, "calls", 1)
-    ]
+    mock_graph_search.expand_neighbors_with_edges.return_value = [(neighbor_node, "calls", 1)]
 
     results = hybrid_retriever._retrieve_sequential(
         repo_id=repo_id,
         query="test",
         k=10,
         location_ctx=location_ctx,
-        weights={
-            "lexical": 0.0,
-            "semantic": 0.0,
-            "graph": 1.0,
-            "fuzzy": 0.0
-        }
+        weights={"lexical": 0.0, "semantic": 0.0, "graph": 1.0, "fuzzy": 0.0},
     )
 
     # Graph 검색 결과가 있어야 함
@@ -227,11 +225,7 @@ def test_retrieve_with_fuzzy_search(hybrid_retriever, mock_fuzzy_search, mock_ch
 
     # Mock fuzzy match
     fuzzy_match = FuzzyMatch(
-        matched_text="UserService",
-        score=0.9,
-        node_id="node-1",
-        file_path="user.py",
-        kind="Class"
+        matched_text="UserService", score=0.9, node_id="node-1", file_path="user.py", kind="Class"
     )
 
     mock_fuzzy_search.search_symbols.return_value = [fuzzy_match]
@@ -246,7 +240,7 @@ def test_retrieve_with_fuzzy_search(hybrid_retriever, mock_fuzzy_search, mock_ch
             span=(0, 0, 10, 0),
             language="python",
             text="class UserService: pass",
-            attrs={}
+            attrs={},
         )
     ]
 
@@ -255,12 +249,7 @@ def test_retrieve_with_fuzzy_search(hybrid_retriever, mock_fuzzy_search, mock_ch
         query="UserServce",  # 오타
         k=10,
         location_ctx=None,
-        weights={
-            "lexical": 0.0,
-            "semantic": 0.0,
-            "graph": 0.0,
-            "fuzzy": 1.0
-        }
+        weights={"lexical": 0.0, "semantic": 0.0, "graph": 0.0, "fuzzy": 1.0},
     )
 
     # Fuzzy 검색 결과가 있어야 함
@@ -274,10 +263,24 @@ def test_retrieve_parallel(hybrid_retriever, mock_lexical_search, mock_semantic_
     query = "test"
 
     mock_lexical_search.search.return_value = [
-        ChunkResult(repo_id=repo_id, chunk_id="chunk-1", score=0.9, source="lexical", file_path="test.py", span=(0, 0, 10, 0))
+        ChunkResult(
+            repo_id=repo_id,
+            chunk_id="chunk-1",
+            score=0.9,
+            source="lexical",
+            file_path="test.py",
+            span=(0, 0, 10, 0),
+        )
     ]
     mock_semantic_search.search.return_value = [
-        ChunkResult(repo_id=repo_id, chunk_id="chunk-2", score=0.8, source="semantic", file_path="test2.py", span=(0, 0, 10, 0))
+        ChunkResult(
+            repo_id=repo_id,
+            chunk_id="chunk-2",
+            score=0.8,
+            source="semantic",
+            file_path="test2.py",
+            span=(0, 0, 10, 0),
+        )
     ]
 
     results = hybrid_retriever._retrieve_parallel(
@@ -285,12 +288,7 @@ def test_retrieve_parallel(hybrid_retriever, mock_lexical_search, mock_semantic_
         query=query,
         k=10,
         location_ctx=None,
-        weights={
-            "lexical": 0.5,
-            "semantic": 0.5,
-            "graph": 0.0,
-            "fuzzy": 0.0
-        }
+        weights={"lexical": 0.5, "semantic": 0.5, "graph": 0.0, "fuzzy": 0.0},
     )
 
     # 병렬 검색 결과
@@ -312,12 +310,7 @@ def test_retrieve_error_handling(hybrid_retriever, mock_lexical_search):
         query=query,
         k=10,
         location_ctx=None,
-        weights={
-            "lexical": 0.5,
-            "semantic": 0.5,
-            "graph": 0.0,
-            "fuzzy": 0.0
-        }
+        weights={"lexical": 0.5, "semantic": 0.5, "graph": 0.0, "fuzzy": 0.0},
     )
 
     # 에러가 발생해도 빈 리스트 반환 (다른 검색도 실패한 경우)
@@ -352,14 +345,10 @@ def test_result_to_candidate(hybrid_retriever):
         score=0.9,
         source="lexical",
         file_path="test.py",
-        span=(0, 0, 10, 0)
+        span=(0, 0, 10, 0),
     )
 
-    candidate = hybrid_retriever._result_to_candidate(
-        result,
-        lexical_score=0.9,
-        semantic_score=0.8
-    )
+    candidate = hybrid_retriever._result_to_candidate(result, lexical_score=0.9, semantic_score=0.8)
 
     assert isinstance(candidate, Candidate)
     assert candidate.chunk_id == "chunk-1"
@@ -380,12 +369,7 @@ def test_retrieve_with_empty_results(hybrid_retriever, mock_lexical_search, mock
         query=query,
         k=10,
         location_ctx=None,
-        weights={
-            "lexical": 0.5,
-            "semantic": 0.5,
-            "graph": 0.0,
-            "fuzzy": 0.0
-        }
+        weights={"lexical": 0.5, "semantic": 0.5, "graph": 0.0, "fuzzy": 0.0},
     )
 
     assert len(results) == 0
@@ -397,17 +381,18 @@ def test_retrieve_default_weights(hybrid_retriever, mock_lexical_search, mock_se
     query = "test"
 
     mock_lexical_search.search.return_value = [
-        ChunkResult(repo_id=repo_id, chunk_id="chunk-1", score=0.9, source="lexical", file_path="test.py", span=(0, 0, 10, 0))
+        ChunkResult(
+            repo_id=repo_id,
+            chunk_id="chunk-1",
+            score=0.9,
+            source="lexical",
+            file_path="test.py",
+            span=(0, 0, 10, 0),
+        )
     ]
     mock_semantic_search.search.return_value = []
 
     # weights=None일 때 기본 가중치 사용
-    results = hybrid_retriever.retrieve(
-        repo_id=repo_id,
-        query=query,
-        k=10,
-        weights=None
-    )
+    results = hybrid_retriever.retrieve(repo_id=repo_id, query=query, k=10, weights=None)
 
     assert len(results) > 0
-

@@ -16,4 +16,3 @@ class ContextPackerPort(Protocol):
     ) -> PackedContext:
         """후보를 토큰 제한 내에서 컨텍스트로 패킹"""
         ...
-

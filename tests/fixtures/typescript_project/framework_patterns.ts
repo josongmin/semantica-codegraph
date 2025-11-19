@@ -578,7 +578,3 @@ class QueryBuilder {
     return parts.join(" ");
   }
 }
-
-
-
-

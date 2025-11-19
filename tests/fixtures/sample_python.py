@@ -1,7 +1,6 @@
 """Sample Python file for testing parser"""
 
 
-
 class User:
     """User model class"""
 
@@ -28,6 +27,8 @@ class Admin(User):
     async def check_permission(self, permission: str) -> bool:
         """Check if admin has permission"""
         return permission in self.permissions
+
+
 def calculate_total(items: list[dict]) -> float:
     """Calculate total price from items"""
     total = 0.0
@@ -40,4 +41,3 @@ async def fetch_data(url: str):
     """Fetch data from URL"""
     # Implementation here
     pass
-

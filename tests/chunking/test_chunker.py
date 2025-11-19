@@ -20,7 +20,7 @@ def sample_nodes():
             span=(10, 0, 15, 0),  # 5줄
             name="small",
             text="def small():\n    return 42\n",
-            attrs={}
+            attrs={},
         ),
         # 큰 함수 (200줄)
         CodeNode(
@@ -32,7 +32,7 @@ def sample_nodes():
             span=(20, 0, 220, 0),  # 200줄
             name="large",
             text="\n".join([f"line {i}" for i in range(200)]),
-            attrs={}
+            attrs={},
         ),
         # 클래스
         CodeNode(
@@ -44,7 +44,7 @@ def sample_nodes():
             span=(250, 0, 280, 0),  # 30줄
             name="MyClass",
             text="class MyClass:\n    pass",
-            attrs={}
+            attrs={},
         ),
         # File 노드 (스킵되어야 함)
         CodeNode(
@@ -56,8 +56,8 @@ def sample_nodes():
             span=(0, 0, 300, 0),
             name="file.py",
             text="# entire file",
-            attrs={}
-        )
+            attrs={},
+        ),
     ]
 
 
@@ -155,7 +155,7 @@ def test_split_node_overlap():
         span=(0, 0, 150, 0),  # 150줄
         name="big",
         text="\n".join([f"line {i}" for i in range(150)]),
-        attrs={}
+        attrs={},
     )
 
     split_chunks = chunker._split_node(large_node)
@@ -181,7 +181,7 @@ def test_hierarchical_chunking():
             span=(0, 0, 50, 0),
             name="MyClass",
             text="class MyClass:\n    ...",
-            attrs={}
+            attrs={},
         ),
         # Method 1
         CodeNode(
@@ -193,7 +193,7 @@ def test_hierarchical_chunking():
             span=(10, 4, 20, 0),
             name="MyClass.foo",
             text="def foo(self):\n    pass",
-            attrs={"parent_class": "MyClass"}
+            attrs={"parent_class": "MyClass"},
         ),
         # Method 2
         CodeNode(
@@ -205,8 +205,8 @@ def test_hierarchical_chunking():
             span=(25, 4, 35, 0),
             name="MyClass.bar",
             text="def bar(self):\n    pass",
-            attrs={"parent_class": "MyClass"}
-        )
+            attrs={"parent_class": "MyClass"},
+        ),
     ]
 
     chunker = Chunker(strategy="hierarchical")
@@ -267,7 +267,7 @@ def test_line_count_calculation():
         span=(10, 0, 20, 0),  # 10줄
         name="test",
         text="test",
-        attrs={}
+        attrs={},
     )
 
     line_count = chunker._get_line_count(node)
@@ -285,3 +285,92 @@ def test_token_estimation():
     assert token_count >= 4  # 최소 4개
     assert token_count < 10  # 과대 추정 방지
 
+
+def test_token_based_chunking():
+    """토큰 기반 청킹 테스트"""
+    # 매우 긴 텍스트 (토큰 제한 초과) - 여러 줄로 구성
+    lines = [
+        f"    line_{i} = {' '.join([f'word{j}' for j in range(i * 50, (i + 1) * 50)])}"
+        for i in range(200)
+    ]  # 200줄, 각 줄에 50개의 단어
+    long_text = "\n".join(lines)
+
+    large_node = CodeNode(
+        repo_id="test",
+        id="test:file:Function:huge",
+        kind="Function",
+        language="python",
+        file_path="file.py",
+        span=(0, 0, 200, 0),
+        name="huge",
+        text=long_text,
+        attrs={},
+    )
+
+    # max_tokens=7000으로 청킹
+    chunker = Chunker(max_tokens=7000)
+    chunks = chunker.chunk([large_node])
+
+    # 여러 청크로 분할되어야 함
+    assert len(chunks) > 1, "큰 노드는 토큰 제한에 따라 분할되어야 함"
+
+    # 각 청크의 토큰 수가 제한 이하여야 함
+    for chunk in chunks:
+        token_count = chunker._count_tokens(chunk.text)
+        assert token_count <= 7000, f"청크 토큰 수({token_count})가 제한(7000)을 초과"
+
+    # 모든 청크에 token_count가 기록되어야 함
+    assert all("token_count" in chunk.attrs for chunk in chunks)
+
+
+def test_token_count_accurate():
+    """tiktoken을 사용한 정확한 토큰 카운팅 테스트"""
+    chunker = Chunker()
+
+    # 간단한 코드 샘플
+    code = """
+def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+"""
+
+    token_count = chunker._count_tokens(code)
+
+    # 토큰 수가 합리적인 범위 내에 있어야 함
+    assert token_count > 0
+    assert token_count < 100  # 간단한 함수이므로 100 토큰 미만
+
+
+def test_token_limit_disabled():
+    """max_tokens=None일 때 토큰 제한 비활성화 테스트"""
+    long_text = " ".join([f"word{i}" for i in range(5000)])
+
+    large_node = CodeNode(
+        repo_id="test",
+        id="test:file:Function:big",
+        kind="Function",
+        language="python",
+        file_path="file.py",
+        span=(0, 0, 500, 0),
+        name="big",
+        text=long_text,
+        attrs={},
+    )
+
+    # max_tokens=None으로 청킹 (토큰 제한 없음)
+    chunker = Chunker(max_tokens=None, max_lines=1000)
+    chunks = chunker.chunk([large_node])
+
+    # 분할되지 않아야 함 (라인 수가 max_lines 이하이므로)
+    assert len(chunks) == 1
+
+
+def test_chunker_initialization_with_max_tokens():
+    """max_tokens 파라미터로 Chunker 초기화 테스트"""
+    chunker = Chunker(max_tokens=5000)
+    assert chunker.max_tokens == 5000
+
+    # 기본값 테스트
+    default_chunker = Chunker()
+    assert default_chunker.max_tokens == 7000

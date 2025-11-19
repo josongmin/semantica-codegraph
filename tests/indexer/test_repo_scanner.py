@@ -88,9 +88,7 @@ def test_scanner_language_filter(temp_repo):
 def test_scanner_custom_exclude(temp_repo):
     """커스텀 제외 패턴 테스트"""
     scanner = RepoScanner()
-    config = RepoConfig(
-        exclude_patterns=["**/src/**"]
-    )
+    config = RepoConfig(exclude_patterns=["**/src/**"])
     files = scanner.scan(str(temp_repo), config=config)
 
     # src 디렉토리 제외
@@ -144,4 +142,3 @@ def test_scanner_file_not_directory(tmp_path):
 
     with pytest.raises(NotADirectoryError):
         scanner.scan(str(file_path))
-

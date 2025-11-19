@@ -23,7 +23,7 @@ def file_meta(sample_python_file):
         "path": "sample_python.py",
         "abs_path": str(sample_python_file),
         "language": "python",
-        "repo_root": str(sample_python_file.parent.parent)
+        "repo_root": str(sample_python_file.parent.parent),
     }
 
 
@@ -64,7 +64,7 @@ def test_symbol_key_generation():
         kind="Function",
         name="foo",
         span=(1, 0, 5, 0),
-        attrs={}
+        attrs={},
     )
 
     key = hybrid._make_symbol_key(symbol)
@@ -98,7 +98,7 @@ def test_merge_symbols_prefers_tree_sitter_span():
         kind="Function",
         name="foo",
         span=(10, 0, 20, 0),  # Tree-sitter span
-        attrs={"ts_info": "value"}
+        attrs={"ts_info": "value"},
     )
 
     scip_sym = RawSymbol(
@@ -108,7 +108,7 @@ def test_merge_symbols_prefers_tree_sitter_span():
         kind="Function",
         name="foo",
         span=(11, 0, 21, 0),  # SCIP span (약간 다름)
-        attrs={"type": "int -> int", "scip_info": "value"}
+        attrs={"type": "int -> int", "scip_info": "value"},
     )
 
     merged = hybrid._merge_symbols([ts_sym], [scip_sym])
@@ -141,7 +141,7 @@ def test_merge_relations_prefers_scip():
         type="calls",
         src_span=(10, 0, 10, 5),
         dst_span=(20, 0, 20, 5),
-        attrs={"target": "bar"}
+        attrs={"target": "bar"},
     )
 
     scip_rel = RawRelation(
@@ -151,7 +151,7 @@ def test_merge_relations_prefers_scip():
         type="calls",
         src_span=(10, 0, 10, 5),
         dst_span=(20, 0, 20, 5),
-        attrs={"target": "bar", "type_checked": True}
+        attrs={"target": "bar", "type_checked": True},
     )
 
     merged = hybrid._merge_relations([ts_rel], [scip_rel])
@@ -160,4 +160,3 @@ def test_merge_relations_prefers_scip():
     assert len(merged) == 1
     result = merged[0]
     assert "type_checked" in result.attrs
-

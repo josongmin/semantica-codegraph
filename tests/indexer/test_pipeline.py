@@ -15,8 +15,7 @@ def test_pipeline_basic_flow_python(python_test_repo):
     bootstrap = create_bootstrap()
 
     result = bootstrap.pipeline.index_repository(
-        root_path=str(python_test_repo),
-        name="test-repo-python"
+        root_path=str(python_test_repo), name="test-repo-python"
     )
 
     assert result.status == "completed"
@@ -32,8 +31,7 @@ def test_pipeline_basic_flow_typescript(typescript_test_repo):
     bootstrap = create_bootstrap()
 
     result = bootstrap.pipeline.index_repository(
-        root_path=str(typescript_test_repo),
-        name="test-repo-typescript"
+        root_path=str(typescript_test_repo), name="test-repo-typescript"
     )
 
     assert result.status == "completed"
@@ -48,15 +46,10 @@ def test_pipeline_with_config_python(python_test_repo):
     """Python 프로젝트 설정이 있는 파이프라인 테스트"""
     bootstrap = create_bootstrap()
 
-    config = RepoConfig(
-        languages=["python"],
-        include_tests=True
-    )
+    config = RepoConfig(languages=["python"], include_tests=True)
 
     result = bootstrap.pipeline.index_repository(
-        root_path=str(python_test_repo),
-        name="test-repo-config-python",
-        config=config
+        root_path=str(python_test_repo), name="test-repo-config-python", config=config
     )
 
     assert result.status == "completed"
@@ -67,15 +60,10 @@ def test_pipeline_with_config_typescript(typescript_test_repo):
     """TypeScript 프로젝트 설정이 있는 파이프라인 테스트"""
     bootstrap = create_bootstrap()
 
-    config = RepoConfig(
-        languages=["typescript"],
-        include_tests=True
-    )
+    config = RepoConfig(languages=["typescript"], include_tests=True)
 
     result = bootstrap.pipeline.index_repository(
-        root_path=str(typescript_test_repo),
-        name="test-repo-config-typescript",
-        config=config
+        root_path=str(typescript_test_repo), name="test-repo-config-typescript", config=config
     )
 
     assert result.status == "completed"
@@ -89,7 +77,7 @@ def test_pipeline_custom_repo_id_python(python_test_repo):
     result = bootstrap.pipeline.index_repository(
         root_path=str(python_test_repo),
         repo_id="my-custom-id-python",
-        name="test-repo-custom-python"
+        name="test-repo-custom-python",
     )
 
     assert result.status == "completed"
@@ -103,7 +91,7 @@ def test_pipeline_custom_repo_id_typescript(typescript_test_repo):
     result = bootstrap.pipeline.index_repository(
         root_path=str(typescript_test_repo),
         repo_id="my-custom-id-typescript",
-        name="test-repo-custom-typescript"
+        name="test-repo-custom-typescript",
     )
 
     assert result.status == "completed"
@@ -114,10 +102,7 @@ def test_pipeline_empty_directory(tmp_path):
     """빈 디렉토리 테스트"""
     bootstrap = create_bootstrap()
 
-    result = bootstrap.pipeline.index_repository(
-        root_path=str(tmp_path),
-        name="empty-repo"
-    )
+    result = bootstrap.pipeline.index_repository(root_path=str(tmp_path), name="empty-repo")
 
     assert result.status == "completed"
     assert result.total_files == 0
@@ -132,7 +117,7 @@ def test_pipeline_metadata_persistence_python(python_test_repo):
     result = bootstrap.pipeline.index_repository(
         root_path=str(python_test_repo),
         repo_id="test-persistence-python",
-        name="test-repo-metadata-python"
+        name="test-repo-metadata-python",
     )
 
     # 메타데이터 조회
@@ -155,7 +140,7 @@ def test_pipeline_metadata_persistence_typescript(typescript_test_repo):
     result = bootstrap.pipeline.index_repository(
         root_path=str(typescript_test_repo),
         repo_id="test-persistence-typescript",
-        name="test-repo-metadata-typescript"
+        name="test-repo-metadata-typescript",
     )
 
     # 메타데이터 조회
@@ -183,7 +168,7 @@ def test_pipeline_full_integration_python(python_test_repo):
     result = bootstrap.pipeline.index_repository(
         root_path=str(python_test_repo),
         repo_id="test-full-integration-python",
-        name="test-repo-full-python"
+        name="test-repo-full-python",
     )
 
     assert result.status == "completed"
@@ -203,9 +188,7 @@ def test_pipeline_full_integration_python(python_test_repo):
     # Lexical 검색 테스트 (선택적)
     try:
         results = bootstrap.lexical_search.search(
-            repo_id="test-full-integration-python",
-            query="def",
-            k=5
+            repo_id="test-full-integration-python", query="def", k=5
         )
         # 결과가 있으면 좋지만, lexical 검색이 안 되어도 실패로 처리하지 않음
         logger.info(f"Lexical search results: {len(results)}")
@@ -226,7 +209,7 @@ def test_pipeline_full_integration_typescript(typescript_test_repo):
     result = bootstrap.pipeline.index_repository(
         root_path=str(typescript_test_repo),
         repo_id="test-full-integration-typescript",
-        name="test-repo-full-typescript"
+        name="test-repo-full-typescript",
     )
 
     assert result.status == "completed"
@@ -246,12 +229,9 @@ def test_pipeline_full_integration_typescript(typescript_test_repo):
     # Lexical 검색 테스트 (선택적)
     try:
         results = bootstrap.lexical_search.search(
-            repo_id="test-full-integration-typescript",
-            query="function",
-            k=5
+            repo_id="test-full-integration-typescript", query="function", k=5
         )
         # 결과가 있으면 좋지만, lexical 검색이 안 되어도 실패로 처리하지 않음
         logger.info(f"Lexical search results: {len(results)}")
     except Exception as e:
         logger.warning(f"Lexical search not available: {e}")
-

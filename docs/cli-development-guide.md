@@ -7,7 +7,7 @@ Semantica Codegraph CLI 개발을 위한 기술 스택 및 가이드라인
 
 현재 프로젝트는 다음 기술 스택을 사용 중입니다:
 - **CLI 프레임워크**: Click (Typer로 마이그레이션 권장)
-- **출력/UX**: Rich + Textual 
+- **출력/UX**: Rich + Textual
 - **설정**: dataclass + python-dotenv (pydantic-settings로 마이그레이션 권장)
 - **로깅**: 표준 logging (structlog 도입 고려)
 - **빌드**: setuptools (uv로 마이그레이션 권장)
@@ -108,7 +108,7 @@ def main(config: Path = typer.Option(None, exists=True)):
 @dataclass
 class Config:
     postgres_host: str = "localhost"
-    
+
     @classmethod
     def from_env(cls) -> "Config":
         # 수동으로 os.getenv() 호출
@@ -121,7 +121,7 @@ from pydantic_settings import BaseSettings
 
 class Config(BaseSettings):
     postgres_host: str = "localhost"
-    
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -283,4 +283,3 @@ semantica-codegraph/
 - **Config**: dataclass + python-dotenv (pydantic-settings 전환 권장)
 - **로깅**: 표준 logging (structlog 도입 고려)
 - **품질**: Ruff + mypy + pytest ✅
-

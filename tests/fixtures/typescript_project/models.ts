@@ -199,4 +199,3 @@ export class OrderModel implements Order {
 export type UserWithRole = User & { role: UserRole };
 
 export type ProductWithCategory = Product & { category: string };
-

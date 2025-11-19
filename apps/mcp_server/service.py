@@ -89,15 +89,12 @@ class MCPService:
                         repo_id=repo_id,
                         file_path=file_path,
                         line=0,  # 현재 라인 정보 없으면 0
-                        filters=filters if filters else None
+                        filters=filters if filters else None,
                     )
 
                 # 하이브리드 검색
                 candidates = self.retriever.retrieve(
-                    repo_id=repo_id,
-                    query=query,
-                    k=limit,
-                    location_ctx=location_ctx
+                    repo_id=repo_id, query=query, k=limit, location_ctx=location_ctx
                 )
 
                 # Candidate → 결과 딕셔너리 변환
@@ -123,7 +120,7 @@ class MCPService:
                             "semantic": candidate.features.get("semantic_score", 0.0),
                             "graph": candidate.features.get("graph_score", 0.0),
                             "fuzzy": candidate.features.get("fuzzy_score", 0.0),
-                        }
+                        },
                     }
                     all_results.append(result)
 
@@ -174,22 +171,22 @@ class MCPService:
             try:
                 # GraphStore에서 노드 검색
                 nodes = self.graph_store.find_nodes_by_name(
-                    repo_id=repo_id,
-                    name=symbol_name,
-                    kind=kind
+                    repo_id=repo_id, name=symbol_name, kind=kind
                 )
 
                 for node in nodes:
-                    results.append({
-                        "repo_id": node.repo_id,
-                        "node_id": node.id,
-                        "kind": node.kind,
-                        "name": node.name,
-                        "file_path": node.file_path,
-                        "line_start": node.span[0],
-                        "line_end": node.span[2],
-                        "text": node.text
-                    })
+                    results.append(
+                        {
+                            "repo_id": node.repo_id,
+                            "node_id": node.id,
+                            "kind": node.kind,
+                            "name": node.name,
+                            "file_path": node.file_path,
+                            "line_start": node.span[0],
+                            "line_end": node.span[2],
+                            "text": node.text,
+                        }
+                    )
 
             except Exception as e:
                 logger.error(f"find_definition failed for repo {repo_id}: {e}")
@@ -236,9 +233,7 @@ class MCPService:
 
             # 이웃 노드 확장
             neighbors = self.graph_search.expand_neighbors(
-                repo_id=repo_id,
-                node_id=node_id,
-                k=depth
+                repo_id=repo_id, node_id=node_id, k=depth
             )
 
             neighbor_results = []
@@ -259,18 +254,20 @@ class MCPService:
                     edges = [e for e in edges if e.type in edge_types]
 
                 for edge in edges:
-                    neighbor_results.append({
-                        "node": {
-                            "node_id": neighbor.id,
-                            "kind": neighbor.kind,
-                            "name": neighbor.name,
-                            "file_path": neighbor.file_path,
-                            "line_start": neighbor.span[0],
-                            "line_end": neighbor.span[2],
-                        },
-                        "edge_type": edge.type,
-                        "direction": "outgoing" if edge.src_id == node_id else "incoming"
-                    })
+                    neighbor_results.append(
+                        {
+                            "node": {
+                                "node_id": neighbor.id,
+                                "kind": neighbor.kind,
+                                "name": neighbor.name,
+                                "file_path": neighbor.file_path,
+                                "line_start": neighbor.span[0],
+                                "line_end": neighbor.span[2],
+                            },
+                            "edge_type": edge.type,
+                            "direction": "outgoing" if edge.src_id == node_id else "incoming",
+                        }
+                    )
 
             return {
                 "center": {
@@ -280,9 +277,9 @@ class MCPService:
                     "file_path": center_node.file_path,
                     "line_start": center_node.span[0],
                     "line_end": center_node.span[2],
-                    "text": center_node.text
+                    "text": center_node.text,
                 },
-                "neighbors": neighbor_results
+                "neighbors": neighbor_results,
             }
 
         except Exception as e:
@@ -330,10 +327,7 @@ class MCPService:
         try:
             # 현재 위치의 노드 찾기
             node = self.graph_search.get_node_by_location(
-                repo_id=repo_id,
-                file_path=file_path,
-                line=line,
-                column=0
+                repo_id=repo_id, file_path=file_path, line=line, column=0
             )
 
             if not node:
@@ -348,9 +342,7 @@ class MCPService:
 
             # ContextPacker로 패킹
             packed = self.context_packer.pack(
-                repo_id=repo_id,
-                primary_chunk_id=primary_chunk.id,
-                max_tokens=max_tokens
+                repo_id=repo_id, primary_chunk_id=primary_chunk.id, max_tokens=max_tokens
             )
 
             return {
@@ -359,7 +351,7 @@ class MCPService:
                     "line_start": packed.primary.span[0],
                     "line_end": packed.primary.span[2],
                     "text": packed.primary.text,
-                    "role": packed.primary.role
+                    "role": packed.primary.role,
                 },
                 "supporting": [
                     {
@@ -367,10 +359,10 @@ class MCPService:
                         "line_start": snippet.span[0],
                         "line_end": snippet.span[2],
                         "text": snippet.text,
-                        "role": snippet.role
+                        "role": snippet.role,
                     }
                     for snippet in packed.supporting
-                ]
+                ],
             }
 
         except Exception as e:
@@ -402,17 +394,13 @@ class MCPService:
                 "line_start": node.span[0],
                 "line_end": node.span[2],
                 "text": node.text,
-                "attrs": node.attrs
+                "attrs": node.attrs,
             }
         except Exception as e:
             logger.error(f"get_node failed: {e}")
             return None
 
-    async def get_file_chunks(
-        self,
-        repo_id: RepoId,
-        file_path: str
-    ) -> list[dict]:
+    async def get_file_chunks(self, repo_id: RepoId, file_path: str) -> list[dict]:
         """
         파일의 모든 청크 조회 (Resource 용)
 
@@ -434,7 +422,7 @@ class MCPService:
                     "line_start": chunk.span[0],
                     "line_end": chunk.span[2],
                     "text": chunk.text,
-                    "language": chunk.language
+                    "language": chunk.language,
                 }
                 for chunk in chunks
             ]
@@ -442,6 +430,45 @@ class MCPService:
             logger.error(f"get_file_chunks failed: {e}")
             return []
 
+    async def list_repositories(self) -> list[dict]:
+        """
+        인덱싱된 저장소 목록 조회
 
+        Returns:
+            저장소 리스트
+            [
+                {
+                    "repo_id": str,
+                    "name": str,
+                    "root_path": str,
+                    "languages": list[str],
+                    "total_files": int,
+                    "total_nodes": int,
+                    "total_edges": int,
+                    "indexing_status": str,
+                    "indexed_at": str | None
+                }
+            ]
+        """
+        logger.info("list_repositories")
 
+        try:
+            repos = self.repo_store.list_repositories()
 
+            return [
+                {
+                    "repo_id": repo.repo_id,
+                    "name": repo.name,
+                    "root_path": repo.root_path,
+                    "languages": repo.languages or [],
+                    "total_files": repo.total_files,
+                    "total_nodes": repo.total_nodes,
+                    "total_edges": repo.total_edges,
+                    "indexing_status": repo.indexing_status,
+                    "indexed_at": repo.indexed_at.isoformat() if repo.indexed_at else None,
+                }
+                for repo in repos
+            ]
+        except Exception as e:
+            logger.error(f"list_repositories failed: {e}")
+            return []

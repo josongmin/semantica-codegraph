@@ -17,7 +17,7 @@ def test_graph_search_get_node():
         file_path="test.py",
         span=(0, 0, 10, 0),
         name="test_func",
-        text="def test_func(): pass"
+        text="def test_func(): pass",
     )
 
     search = PostgresGraphSearch(graph_store)
@@ -40,7 +40,7 @@ def test_graph_search_get_node_by_location():
         file_path="test.py",
         span=(0, 0, 10, 0),
         name="test_func",
-        text="def test_func(): pass"
+        text="def test_func(): pass",
     )
 
     search = PostgresGraphSearch(graph_store)
@@ -64,7 +64,7 @@ def test_graph_search_expand_neighbors():
             file_path="test.py",
             span=(10, 0, 20, 0),
             name="neighbor_func",
-            text="def neighbor_func(): pass"
+            text="def neighbor_func(): pass",
         )
     ]
 
@@ -87,4 +87,3 @@ def test_graph_search_expand_neighbors_zero_k():
 
     assert len(neighbors) == 0
     graph_store.neighbors.assert_not_called()
-

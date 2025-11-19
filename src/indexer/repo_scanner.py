@@ -101,6 +101,11 @@ class RepoScanner:
                 logger.debug(f"Text file excluded (index_text_files=False): {rel_path_str}")
                 continue
 
+            # 테스트 파일 필터 (include_tests=False일 때)
+            if not config.include_tests and self._is_test_file(rel_path_str):
+                logger.debug(f"Test file excluded (include_tests=False): {rel_path_str}")
+                continue
+
             # FileMetadata 생성
             files.append(
                 FileMetadata(file_path=rel_path_str, abs_path=str(file_path), language=language)
@@ -136,3 +141,9 @@ class RepoScanner:
         """확장자 기반 언어 감지"""
         suffix = file_path.suffix.lower()
         return self.LANGUAGE_EXTENSIONS.get(suffix)
+
+    def _is_test_file(self, file_path: str) -> bool:
+        """테스트 파일 여부 확인"""
+        path_lower = file_path.lower()
+        test_keywords = ["test", "tests", "__tests__", "spec", ".test.", ".spec."]
+        return any(kw in path_lower for kw in test_keywords)

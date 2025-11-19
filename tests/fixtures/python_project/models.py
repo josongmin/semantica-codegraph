@@ -8,6 +8,7 @@ from typing import Any
 
 class UserRole(str, Enum):
     """사용자 역할 열거형"""
+
     ADMIN = "admin"
     USER = "user"
     GUEST = "guest"
@@ -16,6 +17,7 @@ class UserRole(str, Enum):
 @dataclass
 class Address:
     """주소 데이터 클래스"""
+
     street: str
     city: str
     zip_code: str
@@ -55,23 +57,14 @@ class User:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "User":
         """딕셔너리로부터 사용자 생성"""
-        user = cls(
-            name=data.get("name", ""),
-            age=data.get("age", 0),
-            email=data.get("email")
-        )
+        user = cls(name=data.get("name", ""), age=data.get("age", 0), email=data.get("email"))
         if "role" in data:
             user.role = UserRole(data["role"])
         return user
 
     def to_dict(self) -> dict[str, Any]:
         """딕셔너리로 변환"""
-        return {
-            "name": self.name,
-            "age": self.age,
-            "email": self.email,
-            "role": self.role.value
-        }
+        return {"name": self.name, "age": self.age, "email": self.email, "role": self.role.value}
 
 
 class Admin(User):
@@ -119,7 +112,7 @@ class Product:
     def apply_discount(self, percentage: float) -> None:
         """할인 적용"""
         if 0 <= percentage <= 100:
-            self.price *= (1 - percentage / 100)
+            self.price *= 1 - percentage / 100
 
     def is_available(self) -> bool:
         """재고 확인"""
@@ -151,4 +144,3 @@ class Order:
                 self.products.pop(i)
                 return True
         return False
-

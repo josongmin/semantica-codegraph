@@ -1,6 +1,7 @@
 """Tree-sitter + SCIP 하이브리드 파서"""
 
 import logging
+from pathlib import Path
 
 from ..core.models import RawRelation, RawSymbol, Span
 from ..core.ports import ParserPort
@@ -40,7 +41,7 @@ class HybridParser(ParserPort):
         tree_sitter_parser: BaseTreeSitterParser,
         scip_parser: ScipParser | None = None,
         prefer_tree_sitter_span: bool = True,
-        enable_type_hint_analysis: bool = True
+        enable_type_hint_analysis: bool = True,
     ):
         """
         Args:
@@ -60,10 +61,7 @@ class HybridParser(ParserPort):
         else:
             self.type_hint_analyzer = None
 
-    def parse_file(
-        self,
-        file_meta: dict
-    ) -> tuple[list[RawSymbol], list[RawRelation]]:
+    def parse_file(self, file_meta: dict) -> tuple[list[RawSymbol], list[RawRelation]]:
         """
         하이브리드 파싱
 
@@ -97,7 +95,7 @@ class HybridParser(ParserPort):
             )
 
         # 5. 타입 힌트 분석 (Python 파일만)
-        if self.type_hint_analyzer and file_meta.get('language') == 'python':
+        if self.type_hint_analyzer and file_meta.get("language") == "python":
             type_hint_relations = self._analyze_type_hints(file_meta)
             if type_hint_relations:
                 relations.extend(type_hint_relations)
@@ -108,9 +106,7 @@ class HybridParser(ParserPort):
         return symbols, relations
 
     def _merge_symbols(
-        self,
-        ts_symbols: list[RawSymbol],
-        scip_symbols: list[RawSymbol]
+        self, ts_symbols: list[RawSymbol], scip_symbols: list[RawSymbol]
     ) -> list[RawSymbol]:
         """
         심볼 병합
@@ -145,10 +141,13 @@ class HybridParser(ParserPort):
                 # span은 Tree-sitter 우선
                 if self.prefer_tree_sitter_span:
                     scip_attrs = scip_sym.attrs.copy()
-                    ts_sym.attrs.update({
-                        k: v for k, v in scip_attrs.items()
-                        if k not in ts_sym.attrs or v is not None
-                    })
+                    ts_sym.attrs.update(
+                        {
+                            k: v
+                            for k, v in scip_attrs.items()
+                            if k not in ts_sym.attrs or v is not None
+                        }
+                    )
                 else:
                     # SCIP span 사용 (거의 안 씀)
                     ts_sym.span = scip_sym.span
@@ -163,9 +162,7 @@ class HybridParser(ParserPort):
         return list(merged.values())
 
     def _merge_relations(
-        self,
-        ts_relations: list[RawRelation],
-        scip_relations: list[RawRelation]
+        self, ts_relations: list[RawRelation], scip_relations: list[RawRelation]
     ) -> list[RawRelation]:
         """
         관계 병합
@@ -212,11 +209,7 @@ class HybridParser(ParserPort):
         Note:
             span은 키에 포함하지 않음 (Tree-sitter와 SCIP span이 약간 다를 수 있음)
         """
-        return (
-            symbol.file_path,
-            symbol.name,
-            symbol.kind
-        )
+        return (symbol.file_path, symbol.name, symbol.kind)
 
     def _make_relation_key(self, relation: RawRelation) -> tuple:
         """
@@ -231,7 +224,7 @@ class HybridParser(ParserPort):
             relation.file_path,
             relation.type,
             relation.src_span,
-            target if target else relation.dst_span
+            target if target else relation.dst_span,
         )
 
     def _is_span_overlapping(self, span1: Span, span2: Span) -> bool:
@@ -260,10 +253,7 @@ class HybridParser(ParserPort):
         return True
 
     def _find_matching_symbol_by_span(
-        self,
-        symbols: list[RawSymbol],
-        target_span: Span,
-        name_hint: str | None = None
+        self, symbols: list[RawSymbol], target_span: Span, name_hint: str | None = None
     ) -> RawSymbol | None:
         """
         Span으로 매칭되는 심볼 찾기
@@ -283,19 +273,13 @@ class HybridParser(ParserPort):
                     return sym
 
         # span 겹치는 것 중 가장 작은 것 찾기 (가장 구체적인 심볼)
-        candidates = [
-            sym for sym in symbols
-            if self._is_span_overlapping(sym.span, target_span)
-        ]
+        candidates = [sym for sym in symbols if self._is_span_overlapping(sym.span, target_span)]
 
         if not candidates:
             return None
 
         # 가장 작은 span (가장 구체적)
-        return min(
-            candidates,
-            key=lambda s: (s.span[2] - s.span[0], s.span[3] - s.span[1])
-        )
+        return min(candidates, key=lambda s: (s.span[2] - s.span[0], s.span[3] - s.span[1]))
 
     def _analyze_type_hints(self, file_meta: dict) -> list[RawRelation]:
         """
@@ -309,14 +293,14 @@ class HybridParser(ParserPort):
         """
         # 파일 읽기
         try:
-            with open(file_meta['abs_path'], encoding='utf-8') as f:
+            with Path(file_meta["abs_path"]).open(encoding="utf-8") as f:
                 code = f.read()
         except Exception as e:
             logger.warning(f"Failed to read file for type hint analysis: {e}")
             return []
 
         # 타입 힌트 분석
-        inferred_calls = self.type_hint_analyzer.analyze(code, file_meta['path'])
+        inferred_calls = self.type_hint_analyzer.analyze(code, file_meta["path"])
 
         # InferredCall을 RawRelation으로 변환
         relations = []
@@ -330,10 +314,9 @@ class HybridParser(ParserPort):
                         "confidence": call.confidence,
                         "inferred": True,
                         "method": "type_hint",
-                        "line": call.line
-                    }
+                        "line": call.line,
+                    },
                 )
             )
 
         return relations
-

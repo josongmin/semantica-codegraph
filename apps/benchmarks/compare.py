@@ -27,7 +27,8 @@ from apps.benchmarks.evaluators.semantica import SemanticaEvaluator
 
 def load_queries(file_path: str) -> list[str]:
     """쿼리 파일 로드 (한 줄에 하나씩)"""
-    with open(file_path) as f:
+    path = Path(file_path)
+    with path.open() as f:
         return [line.strip() for line in f if line.strip()]
 
 
@@ -44,14 +45,12 @@ def load_ground_truth(file_path: str) -> list[GroundTruth]:
       ...
     ]
     """
-    with open(file_path) as f:
+    path = Path(file_path)
+    with path.open() as f:
         data = json.load(f)
 
     return [
-        GroundTruth(
-            query=item["query"],
-            relevant_items=set(item["relevant_items"])
-        )
+        GroundTruth(query=item["query"], relevant_items=set(item["relevant_items"]))
         for item in data
     ]
 
@@ -63,7 +62,7 @@ def compare_retrievers(
     cody_repo: str,
     queries: list[str],
     ground_truths: list[GroundTruth],
-    k: int = 5
+    k: int = 5,
 ):
     """리트리버 비교 실행"""
 
@@ -78,9 +77,7 @@ def compare_retrievers(
     # 1. Semantica 평가
     print("[1/2] Semantica 리트리버 평가 중...")
     semantica_results = semantica_eval.batch_search(repo_id, queries, k)
-    semantica_metrics = MetricsCalculator.evaluate_batch(
-        semantica_results, ground_truths, k
-    )
+    semantica_metrics = MetricsCalculator.evaluate_batch(semantica_results, ground_truths, k)
 
     print("\n[Semantica 결과]")
     print(semantica_metrics)
@@ -91,9 +88,7 @@ def compare_retrievers(
         print("[2/2] Cody 리트리버 평가 중...")
         try:
             cody_results = cody_eval.batch_search(queries, cody_repo, k)
-            cody_metrics = MetricsCalculator.evaluate_batch(
-                cody_results, ground_truths, k
-            )
+            cody_metrics = MetricsCalculator.evaluate_batch(cody_results, ground_truths, k)
 
             print("\n[Cody 결과]")
             print(cody_metrics)
@@ -224,10 +219,9 @@ def main():
         args.cody_repo or "",
         queries,
         ground_truths,
-        args.k
+        args.k,
     )
 
 
 if __name__ == "__main__":
     main()
-

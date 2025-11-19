@@ -23,7 +23,7 @@ def create_parser(
     use_hybrid: bool = False,
     use_enhanced: bool = True,
     scip_index_path: Path | None = None,
-    framework: str | None = None
+    framework: str | None = None,
 ) -> ParserPort | None:
     """
     언어별 파서 생성
@@ -57,10 +57,7 @@ def create_parser(
         >>> hybrid = create_parser("python", use_hybrid=True)
     """
     # 텍스트 언어 처리 (최우선)
-    text_languages = {
-        "markdown", "text", "restructuredtext",
-        "json", "yaml", "toml"
-    }
+    text_languages = {"markdown", "text", "restructuredtext", "json", "yaml", "toml"}
     if language.lower() in text_languages:
         return TextParser()
 
@@ -72,10 +69,7 @@ def create_parser(
     if use_hybrid:
         ts_parser = _create_tree_sitter_parser(language)
         if ts_parser:
-            scip = ScipParser(
-                scip_index_path=scip_index_path,
-                auto_index=(scip_index_path is None)
-            )
+            scip = ScipParser(scip_index_path=scip_index_path, auto_index=(scip_index_path is None))
             return HybridParser(ts_parser, scip)
         else:
             logger.warning(f"Language {language} not supported for hybrid parsing")
@@ -90,7 +84,6 @@ def create_parser(
 
 
 def _create_tree_sitter_parser(language: str) -> BaseTreeSitterParser | None:
-
     """Tree-sitter 파서 생성 (내부 헬퍼)"""
     parsers = {
         "python": PythonTreeSitterParser,
@@ -121,10 +114,7 @@ def create_scip_parser(scip_index_path: Path | None = None) -> ScipParser:
     Returns:
         ScipParser 인스턴스
     """
-    return ScipParser(
-        scip_index_path=scip_index_path,
-        auto_index=(scip_index_path is None)
-    )
+    return ScipParser(scip_index_path=scip_index_path, auto_index=(scip_index_path is None))
 
 
 __all__ = [
@@ -138,4 +128,3 @@ __all__ = [
     "create_parser",
     "create_scip_parser",
 ]
-

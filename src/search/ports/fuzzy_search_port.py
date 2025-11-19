@@ -9,6 +9,7 @@ from ...core.models import RepoId
 @dataclass
 class FuzzyMatch:
     """퍼지 매칭 결과"""
+
     matched_text: str  # 실제 매칭된 심볼명
     score: float  # 유사도 점수 (0.0~1.0)
     node_id: str | None = None  # 매칭된 노드 ID (있는 경우)
@@ -72,4 +73,3 @@ class FuzzySearchPort(ABC):
             repo_id: 저장소 ID (None이면 전체 캐시 삭제)
         """
         pass
-

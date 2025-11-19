@@ -10,12 +10,13 @@ from src.graph.store_postgres import PostgresGraphStore
 # PostgreSQL 연결이 필요하므로 실제 DB 테스트는 통합 테스트에서
 # 여기서는 기본적인 것만 테스트
 
+
 @pytest.fixture
 def connection_string():
     """테스트용 연결 문자열"""
     return os.getenv(
         "TEST_DB_URL",
-        "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+        "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica",
     )
 
 
@@ -32,7 +33,7 @@ def sample_nodes():
             span=(1, 0, 10, 0),
             name="User",
             text="class User:\n    pass",
-            attrs={"docstring": "User class"}
+            attrs={"docstring": "User class"},
         ),
         CodeNode(
             repo_id="test-repo",
@@ -43,8 +44,8 @@ def sample_nodes():
             span=(5, 4, 8, 10),
             name="User.save",
             text="def save(self):\n    pass",
-            attrs={"parent_class": "User"}
-        )
+            attrs={"parent_class": "User"},
+        ),
     ]
 
 
@@ -57,7 +58,7 @@ def sample_edges():
             src_id="test-repo:test.py:Class:User",
             dst_id="test-repo:test.py:Method:User.save",
             type="defines",
-            attrs={}
+            attrs={},
         )
     ]
 
@@ -136,10 +137,13 @@ def test_row_to_node_conversion():
         "Class",
         "python",
         "test.py",
-        1, 0, 10, 0,  # span
+        1,
+        0,
+        10,
+        0,  # span
         "User",
         "class User:\n    pass",
-        {"docstring": "User class"}
+        {"docstring": "User class"},
     )
 
     # _row_to_node은 연결 없이 호출 가능 (static method처럼 사용)
@@ -150,4 +154,3 @@ def test_row_to_node_conversion():
     assert row[0] == "test-repo"
     assert row[2] == "Class"
     assert row[9] == "User"
-

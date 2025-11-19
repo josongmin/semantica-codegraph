@@ -1,6 +1,5 @@
 """Ranker 테스트"""
 
-
 from src.core.models import Candidate
 from src.search.adapters.ranking.ranker import Ranker
 
@@ -15,21 +14,21 @@ def test_ranker_basic():
             chunk_id="chunk-1",
             features={"lexical_score": 0.5, "semantic_score": 0.8},
             file_path="test.py",
-            span=(0, 0, 10, 0)
+            span=(0, 0, 10, 0),
         ),
         Candidate(
             repo_id="test",
             chunk_id="chunk-2",
             features={"lexical_score": 0.9, "semantic_score": 0.3},
             file_path="test.py",
-            span=(10, 0, 20, 0)
+            span=(10, 0, 20, 0),
         ),
         Candidate(
             repo_id="test",
             chunk_id="chunk-3",
             features={"lexical_score": 0.2, "semantic_score": 0.2},
             file_path="test.py",
-            span=(20, 0, 30, 0)
+            span=(20, 0, 30, 0),
         ),
     ]
 
@@ -57,14 +56,14 @@ def test_ranker_custom_weights():
             chunk_id="chunk-1",
             features={"lexical_score": 0.5, "semantic_score": 0.9},
             file_path="test.py",
-            span=(0, 0, 10, 0)
+            span=(0, 0, 10, 0),
         ),
         Candidate(
             repo_id="test",
             chunk_id="chunk-2",
             features={"lexical_score": 0.8, "semantic_score": 0.1},
             file_path="test.py",
-            span=(10, 0, 20, 0)
+            span=(10, 0, 20, 0),
         ),
     ]
 
@@ -91,4 +90,3 @@ def test_ranker_update_weights():
 
     assert ranker.feature_weights["lexical_score"] == 0.5
     assert ranker.feature_weights["semantic_score"] == 0.5  # 기존 값 유지
-

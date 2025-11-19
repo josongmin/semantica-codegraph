@@ -265,4 +265,3 @@ def my_metric(result: SearchResult, ground_truth: GroundTruth) -> float:
 3. 시각화 (그래프, 차트)
 4. CI/CD 통합 (성능 회귀 감지)
 5. A/B 테스트 프레임워크
-

@@ -13,6 +13,7 @@ _module_cache: dict[str, Any] = {}
 # 동적 모듈 생성
 def create_dynamic_module(name: str) -> type:
     """동적으로 클래스를 생성하는 함수"""
+
     class DynamicModule:
         def __init__(self, **kwargs):
             for k, v in kwargs.items():
@@ -111,12 +112,15 @@ class MetaBuilder(type):
         # 빌더 메서드 자동 생성
         for key, value in namespace.items():
             if not key.startswith("_") and not callable(value):
+
                 def make_setter(k):
                     def setter(self, val):
                         setattr(self, f"_{k}", val)
                         return self
+
                     setter.__name__ = f"set_{k}"
                     return setter
+
                 namespace[f"set_{key}"] = make_setter(key)
 
         return super().__new__(mcs, name, bases, namespace)
@@ -124,6 +128,7 @@ class MetaBuilder(type):
 
 class BuiltClass(metaclass=MetaBuilder):
     """메타클래스로 빌더가 자동 생성되는 클래스"""
+
     name: str = ""
     age: int = 0
 
@@ -134,6 +139,7 @@ def decorator1(func):
     def wrapper(*args, **kwargs):
         print("Decorator 1")
         return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -142,6 +148,7 @@ def decorator2(func):
     def wrapper(*args, **kwargs):
         print("Decorator 2")
         return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -150,6 +157,7 @@ def decorator3(func):
     def wrapper(*args, **kwargs):
         print("Decorator 3")
         return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -162,12 +170,7 @@ def heavily_decorated_function(x: int) -> int:
 
 
 # 람다 체이닝
-lambda_chain = (
-    lambda x: x + 1,
-    lambda x: x * 2,
-    lambda x: x ** 2,
-    lambda x: str(x)
-)
+lambda_chain = (lambda x: x + 1, lambda x: x * 2, lambda x: x**2, lambda x: str(x))
 
 
 def apply_lambda_chain(value: int) -> str:
@@ -200,12 +203,7 @@ def create_counter(start: int = 0):
         nonlocal count
         count = start
 
-    return {
-        "increment": increment,
-        "decrement": decrement,
-        "get": get,
-        "reset": reset
-    }
+    return {"increment": increment, "decrement": decrement, "get": get, "reset": reset}
 
 
 # 부분 적용 남용
@@ -247,8 +245,8 @@ class NumberLike:
 
     def __pow__(self, other):
         if isinstance(other, NumberLike):
-            return NumberLike(self.value ** other.value)
-        return NumberLike(self.value ** other)
+            return NumberLike(self.value**other.value)
+        return NumberLike(self.value**other)
 
     def __mod__(self, other):
         if isinstance(other, NumberLike):
@@ -358,10 +356,10 @@ class EverythingClass:
         return format(self.value, format_spec)
 
     def __bytes__(self):
-        return bytes(str(self.value), encoding='utf-8')
+        return bytes(str(self.value), encoding="utf-8")
 
     def __dir__(self):
-        return list(super().__dir__()) + ['custom_attr']
+        return list(super().__dir__()) + ["custom_attr"]
 
 
 # 동적 타입 생성
@@ -372,10 +370,7 @@ def create_type(name: str, bases: tuple = (), attrs: dict = None):
     return type(name, bases, attrs)
 
 
-DynamicType = create_type("DynamicType", (), {
-    "value": 42,
-    "get_value": lambda self: self.value
-})
+DynamicType = create_type("DynamicType", (), {"value": 42, "get_value": lambda self: self.value})
 
 
 # 함수 시그니처 조작
@@ -408,6 +403,7 @@ _module_init_code = """
 print("Module is being imported!")
 """
 
+
 # exec를 사용한 동적 코드 실행
 def execute_dynamic_code(code: str, globals_dict: dict = None, locals_dict: dict = None):
     """동적으로 코드 실행"""
@@ -435,7 +431,7 @@ def generator2(gen):
 def generator3(gen):
     """세 번째 제너레이터"""
     for value in gen:
-        yield value ** 2
+        yield value**2
 
 
 def chained_generators(n: int):
@@ -544,14 +540,18 @@ class PropertyChain:
 # 데코레이터 팩토리의 팩토리
 def decorator_factory_factory(base_name: str):
     """데코레이터 팩토리를 생성하는 팩토리"""
+
     def decorator_factory(prefix: str = ""):
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             def wrapper(*args, **kwargs):
                 print(f"{prefix}{base_name}: {func.__name__}")
                 return func(*args, **kwargs)
+
             return wrapper
+
         return decorator
+
     return decorator_factory
 
 
@@ -562,4 +562,3 @@ my_decorator = my_decorator_factory("[INFO] ")
 @my_decorator
 def decorated_function():
     return "result"
-

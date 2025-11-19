@@ -156,12 +156,7 @@ class SymbolFuzzyMatcher(FuzzySearchPort):
         logger.debug(f"Fuzzy search: '{query}' → {len(results)} matches")
         return results
 
-    def _smart_filter(
-        self,
-        symbols: list[str],
-        query: str,
-        max_count: int
-    ) -> list[str]:
+    def _smart_filter(self, symbols: list[str], query: str, max_count: int) -> list[str]:
         """
         스마트 필터링: prefix 매칭 우선, 그 다음 길이 유사도
 
@@ -176,16 +171,10 @@ class SymbolFuzzyMatcher(FuzzySearchPort):
         query_lower = query.lower()
 
         # 1. Prefix 매칭 (대소문자 무시)
-        prefix_matches = [
-            s for s in symbols
-            if s.lower().startswith(query_lower)
-        ]
+        prefix_matches = [s for s in symbols if s.lower().startswith(query_lower)]
 
         # 2. 길이 비슷한 것
-        length_matches = sorted(
-            symbols,
-            key=lambda s: abs(len(s) - len(query))
-        )
+        length_matches = sorted(symbols, key=lambda s: abs(len(s) - len(query)))
 
         # 3. 결합 (prefix 우선, 중복 제거)
         seen = set()
@@ -249,4 +238,3 @@ class SymbolFuzzyMatcher(FuzzySearchPort):
 
         # LRU 캐시 클리어
         self._cached_search.cache_clear()
-

@@ -35,34 +35,25 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
             language = Language(tree_sitter_typescript.language_typescript())
         super().__init__(language)
 
-    def extract_symbols(
-        self,
-        root: Node,
-        source: bytes,
-        file_meta: dict
-    ) -> list[RawSymbol]:
+    def extract_symbols(self, root: Node, source: bytes, file_meta: dict) -> list[RawSymbol]:
         """TypeScript 심볼 추출"""
         symbols = []
 
         # File 레벨 심볼
-        symbols.append(RawSymbol(
-            repo_id=file_meta["repo_id"],
-            file_path=file_meta["path"],
-            language=file_meta.get("language", "typescript"),
-            kind="File",
-            name=file_meta["path"],
-            span=self._node_to_span(root),
-            attrs={}
-        ))
+        symbols.append(
+            RawSymbol(
+                repo_id=file_meta["repo_id"],
+                file_path=file_meta["path"],
+                language=file_meta.get("language", "typescript"),
+                kind="File",
+                name=file_meta["path"],
+                span=self._node_to_span(root),
+                attrs={},
+            )
+        )
 
         # 심볼 추출
-        self._extract_symbols_recursive(
-            root,
-            source,
-            file_meta,
-            symbols,
-            parent_class=None
-        )
+        self._extract_symbols_recursive(root, source, file_meta, symbols, parent_class=None)
 
         return symbols
 
@@ -72,7 +63,7 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
         source: bytes,
         file_meta: dict,
         symbols: list[RawSymbol],
-        parent_class: str | None
+        parent_class: str | None,
     ):
         """재귀적으로 노드 순회하며 심볼 추출"""
 
@@ -82,31 +73,29 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
             if name_node:
                 class_name = self._get_node_text(name_node, source)
 
-                symbols.append(RawSymbol(
-                    repo_id=file_meta["repo_id"],
-                    file_path=file_meta["path"],
-                    language=file_meta.get("language", "typescript"),
-                    kind="Class",
-                    name=class_name,
-                    span=self._node_to_span(node),
-                    attrs={
-                        "is_export": self._has_export_modifier(node),
-                        "is_abstract": True,  # abstract class
-                        "implements": self._extract_implements(node, source),
-                        "extends": self._extract_extends(node, source)
-                    }
-                ))
+                symbols.append(
+                    RawSymbol(
+                        repo_id=file_meta["repo_id"],
+                        file_path=file_meta["path"],
+                        language=file_meta.get("language", "typescript"),
+                        kind="Class",
+                        name=class_name,
+                        span=self._node_to_span(node),
+                        attrs={
+                            "is_export": self._has_export_modifier(node),
+                            "is_abstract": True,  # abstract class
+                            "implements": self._extract_implements(node, source),
+                            "extends": self._extract_extends(node, source),
+                        },
+                    )
+                )
 
                 # 클래스 body 내부 순회
                 body = node.child_by_field_name("body")
                 if body:
                     for child in body.children:
                         self._extract_symbols_recursive(
-                            child,
-                            source,
-                            file_meta,
-                            symbols,
-                            parent_class=class_name
+                            child, source, file_meta, symbols, parent_class=class_name
                         )
 
         # 클래스 선언
@@ -115,31 +104,29 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
             if name_node:
                 class_name = self._get_node_text(name_node, source)
 
-                symbols.append(RawSymbol(
-                    repo_id=file_meta["repo_id"],
-                    file_path=file_meta["path"],
-                    language=file_meta.get("language", "typescript"),
-                    kind="Class",
-                    name=class_name,
-                    span=self._node_to_span(node),
-                    attrs={
-                        "is_export": self._has_export_modifier(node),
-                        "is_abstract": self._has_modifier(node, "abstract"),
-                        "implements": self._extract_implements(node, source),
-                        "extends": self._extract_extends(node, source)
-                    }
-                ))
+                symbols.append(
+                    RawSymbol(
+                        repo_id=file_meta["repo_id"],
+                        file_path=file_meta["path"],
+                        language=file_meta.get("language", "typescript"),
+                        kind="Class",
+                        name=class_name,
+                        span=self._node_to_span(node),
+                        attrs={
+                            "is_export": self._has_export_modifier(node),
+                            "is_abstract": self._has_modifier(node, "abstract"),
+                            "implements": self._extract_implements(node, source),
+                            "extends": self._extract_extends(node, source),
+                        },
+                    )
+                )
 
                 # 클래스 body 내부 순회
                 body = node.child_by_field_name("body")
                 if body:
                     for child in body.children:
                         self._extract_symbols_recursive(
-                            child,
-                            source,
-                            file_meta,
-                            symbols,
-                            parent_class=class_name
+                            child, source, file_meta, symbols, parent_class=class_name
                         )
 
         # 함수 선언
@@ -148,19 +135,21 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
             if name_node:
                 func_name = self._get_node_text(name_node, source)
 
-                symbols.append(RawSymbol(
-                    repo_id=file_meta["repo_id"],
-                    file_path=file_meta["path"],
-                    language=file_meta.get("language", "typescript"),
-                    kind="Function",
-                    name=func_name,
-                    span=self._node_to_span(node),
-                    attrs={
-                        "is_export": self._has_export_modifier(node),
-                        "is_async": self._has_modifier(node, "async"),
-                        "parameters": self._extract_parameters(node, source)
-                    }
-                ))
+                symbols.append(
+                    RawSymbol(
+                        repo_id=file_meta["repo_id"],
+                        file_path=file_meta["path"],
+                        language=file_meta.get("language", "typescript"),
+                        kind="Function",
+                        name=func_name,
+                        span=self._node_to_span(node),
+                        attrs={
+                            "is_export": self._has_export_modifier(node),
+                            "is_async": self._has_modifier(node, "async"),
+                            "parameters": self._extract_parameters(node, source),
+                        },
+                    )
+                )
 
         # 메서드 정의 (클래스 내부)
         elif node.type == "method_definition":
@@ -169,21 +158,23 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
                 method_name = self._get_node_text(name_node, source)
                 full_name = f"{parent_class}.{method_name}"
 
-                symbols.append(RawSymbol(
-                    repo_id=file_meta["repo_id"],
-                    file_path=file_meta["path"],
-                    language=file_meta.get("language", "typescript"),
-                    kind="Method",
-                    name=full_name,
-                    span=self._node_to_span(node),
-                    attrs={
-                        "parent_class": parent_class,
-                        "is_static": self._has_modifier(node, "static"),
-                        "is_async": self._has_modifier(node, "async"),
-                        "visibility": self._get_visibility(node),
-                        "parameters": self._extract_parameters(node, source)
-                    }
-                ))
+                symbols.append(
+                    RawSymbol(
+                        repo_id=file_meta["repo_id"],
+                        file_path=file_meta["path"],
+                        language=file_meta.get("language", "typescript"),
+                        kind="Method",
+                        name=full_name,
+                        span=self._node_to_span(node),
+                        attrs={
+                            "parent_class": parent_class,
+                            "is_static": self._has_modifier(node, "static"),
+                            "is_async": self._has_modifier(node, "async"),
+                            "visibility": self._get_visibility(node),
+                            "parameters": self._extract_parameters(node, source),
+                        },
+                    )
+                )
 
         # 인터페이스 선언 (TypeScript)
         elif node.type == "interface_declaration":
@@ -191,18 +182,20 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
             if name_node:
                 interface_name = self._get_node_text(name_node, source)
 
-                symbols.append(RawSymbol(
-                    repo_id=file_meta["repo_id"],
-                    file_path=file_meta["path"],
-                    language="typescript",
-                    kind="Interface",
-                    name=interface_name,
-                    span=self._node_to_span(node),
-                    attrs={
-                        "is_export": self._has_export_modifier(node),
-                        "extends": self._extract_interface_extends(node, source)
-                    }
-                ))
+                symbols.append(
+                    RawSymbol(
+                        repo_id=file_meta["repo_id"],
+                        file_path=file_meta["path"],
+                        language="typescript",
+                        kind="Interface",
+                        name=interface_name,
+                        span=self._node_to_span(node),
+                        attrs={
+                            "is_export": self._has_export_modifier(node),
+                            "extends": self._extract_interface_extends(node, source),
+                        },
+                    )
+                )
 
         # 타입 선언 (TypeScript)
         elif node.type == "type_alias_declaration":
@@ -210,28 +203,22 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
             if name_node:
                 type_name = self._get_node_text(name_node, source)
 
-                symbols.append(RawSymbol(
-                    repo_id=file_meta["repo_id"],
-                    file_path=file_meta["path"],
-                    language="typescript",
-                    kind="Type",
-                    name=type_name,
-                    span=self._node_to_span(node),
-                    attrs={
-                        "is_export": self._has_export_modifier(node)
-                    }
-                ))
+                symbols.append(
+                    RawSymbol(
+                        repo_id=file_meta["repo_id"],
+                        file_path=file_meta["path"],
+                        language="typescript",
+                        kind="Type",
+                        name=type_name,
+                        span=self._node_to_span(node),
+                        attrs={"is_export": self._has_export_modifier(node)},
+                    )
+                )
 
         # 다른 노드는 자식만 순회
         else:
             for child in node.children:
-                self._extract_symbols_recursive(
-                    child,
-                    source,
-                    file_meta,
-                    symbols,
-                    parent_class
-                )
+                self._extract_symbols_recursive(child, source, file_meta, symbols, parent_class)
 
     def _extract_parameters(self, node: Node, source: bytes) -> list[dict]:
         """파라미터 추출"""
@@ -249,11 +236,13 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
                 if pattern and pattern.type == "identifier":
                     param_name = self._get_node_text(pattern, source)
 
-                params.append({
-                    "name": param_name,
-                    "type": self._get_node_text(type_node, source) if type_node else None,
-                    "is_optional": child.type == "optional_parameter"
-                })
+                params.append(
+                    {
+                        "name": param_name,
+                        "type": self._get_node_text(type_node, source) if type_node else None,
+                        "is_optional": child.type == "optional_parameter",
+                    }
+                )
 
         return params
 
@@ -334,11 +323,7 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
         return extends
 
     def extract_relations(
-        self,
-        root: Node,
-        source: bytes,
-        file_meta: dict,
-        symbols: list[RawSymbol]
+        self, root: Node, source: bytes, file_meta: dict, symbols: list[RawSymbol]
     ) -> list[RawRelation]:
         """
         TypeScript 관계 추출
@@ -357,15 +342,17 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
             if symbol.kind == "Method" and symbol.attrs.get("parent_class"):
                 parent_class = symbol.attrs["parent_class"]
                 if parent_class in symbol_map:
-                    relations.append(RawRelation(
-                        repo_id=file_meta["repo_id"],
-                        file_path=file_meta["path"],
-                        language=file_meta.get("language", "typescript"),
-                        type="defines",
-                        src_span=symbol_map[parent_class].span,
-                        dst_span=symbol.span,
-                        attrs={"target": symbol.name}
-                    ))
+                    relations.append(
+                        RawRelation(
+                            repo_id=file_meta["repo_id"],
+                            file_path=file_meta["path"],
+                            language=file_meta.get("language", "typescript"),
+                            type="defines",
+                            src_span=symbol_map[parent_class].span,
+                            dst_span=symbol.span,
+                            attrs={"target": symbol.name},
+                        )
+                    )
 
         # 상속/구현 관계 (같은 파일 내)
         for symbol in symbols:
@@ -373,30 +360,33 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
                 # extends
                 extends = symbol.attrs.get("extends")
                 if extends and extends in symbol_map:
-                    relations.append(RawRelation(
-                        repo_id=file_meta["repo_id"],
-                        file_path=file_meta["path"],
-                        language=file_meta.get("language", "typescript"),
-                        type="extends",
-                        src_span=symbol.span,
-                        dst_span=symbol_map[extends].span,
-                        attrs={"parent": extends}
-                    ))
+                    relations.append(
+                        RawRelation(
+                            repo_id=file_meta["repo_id"],
+                            file_path=file_meta["path"],
+                            language=file_meta.get("language", "typescript"),
+                            type="extends",
+                            src_span=symbol.span,
+                            dst_span=symbol_map[extends].span,
+                            attrs={"parent": extends},
+                        )
+                    )
 
                 # implements
                 implements = symbol.attrs.get("implements", [])
                 for interface in implements:
                     if interface in symbol_map:
-                        relations.append(RawRelation(
-                            repo_id=file_meta["repo_id"],
-                            file_path=file_meta["path"],
-                            language=file_meta.get("language", "typescript"),
-                            type="implements",
-                            src_span=symbol.span,
-                            dst_span=symbol_map[interface].span,
-                            attrs={"interface": interface}
-                        ))
+                        relations.append(
+                            RawRelation(
+                                repo_id=file_meta["repo_id"],
+                                file_path=file_meta["path"],
+                                language=file_meta.get("language", "typescript"),
+                                type="implements",
+                                src_span=symbol.span,
+                                dst_span=symbol_map[interface].span,
+                                attrs={"interface": interface},
+                            )
+                        )
 
         logger.debug(f"Extracted {len(relations)} relations for {file_meta['path']}")
         return relations
-

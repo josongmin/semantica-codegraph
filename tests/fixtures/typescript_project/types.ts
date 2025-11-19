@@ -106,4 +106,3 @@ export function createMixin<T extends Constructor>(
     Base
   ) as T;
 }
-

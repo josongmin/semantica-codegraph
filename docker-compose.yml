@@ -84,4 +84,3 @@ volumes:
   postgres_data:
   meilisearch_data:
   zoekt_data:
-

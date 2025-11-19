@@ -409,4 +409,3 @@ export SOURCEGRAPH_TOKEN=sgp_xxxxx
 ```
 
 **끝!** 🎉
-

@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TypeInfo:
     """타입 정보"""
+
     var_name: str
     type_name: str
     module: str | None = None
@@ -27,6 +28,7 @@ class TypeInfo:
 @dataclass
 class InferredCall:
     """추론된 호출 정보"""
+
     source: str  # "getattr(UserAuth, 'login')"
     target: str  # "UserAuth.login"
     confidence: float  # 0.0-1.0
@@ -103,9 +105,7 @@ class TypeHintAnalyzer:
 
                 self.current_function = None
 
-        logger.debug(
-            f"Type hint analysis: {len(inferred)} calls inferred from {file_path}"
-        )
+        logger.debug(f"Type hint analysis: {len(inferred)} calls inferred from {file_path}")
 
         return inferred
 
@@ -290,7 +290,7 @@ class TypeHintAnalyzer:
             source=f"getattr({obj_type}, {method_name!r})",
             target=f"{resolved_type}.{method_name}",
             confidence=0.9,  # 타입 힌트가 있으면 높은 확률
-            line=getattr(node, 'lineno', 0)
+            line=getattr(node, "lineno", 0),
         )
 
         scope_info = f"[{function_name}]" if function_name else "[module]"
@@ -300,10 +300,7 @@ class TypeHintAnalyzer:
 
     def _is_getattr(self, node: ast.Call) -> bool:
         """getattr 호출인지 확인"""
-        return (
-            isinstance(node.func, ast.Name) and
-            node.func.id == "getattr"
-        )
+        return isinstance(node.func, ast.Name) and node.func.id == "getattr"
 
     def _infer_type(self, node: ast.AST, function_name: str | None = None) -> str | None:
         """
@@ -380,4 +377,3 @@ class TypeHintAnalyzer:
 
         # 변환 안됨 (원본 그대로)
         return type_name
-

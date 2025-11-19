@@ -15,12 +15,10 @@ def sample_scip_index_dir(tmp_path):
     index_dir.mkdir()
 
     # 샘플 메타데이터
-    metadata = {
-        "version": "1.0",
-        "files": ["test.py"]
-    }
+    metadata = {"version": "1.0", "files": ["test.py"]}
 
     import json
+
     (index_dir / "metadata.json").write_text(json.dumps(metadata))
 
     return index_dir
@@ -63,7 +61,7 @@ def test_parse_file_no_index():
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": "/path/to/test.py",
-        "language": "python"
+        "language": "python",
     }
 
     symbols, relations = parser.parse_file(file_meta)
@@ -81,7 +79,7 @@ def test_parse_file_with_directory_index(sample_scip_index_dir):
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": str(sample_scip_index_dir / "test.py"),
-        "language": "python"
+        "language": "python",
     }
 
     # _ensure_index가 True를 반환하도록 설정
@@ -103,7 +101,7 @@ def test_parse_file_with_file_index(sample_scip_index_file):
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": str(sample_scip_index_file),
-        "language": "python"
+        "language": "python",
     }
 
     parser._is_directory_format = False
@@ -114,7 +112,7 @@ def test_parse_file_with_file_index(sample_scip_index_file):
     assert isinstance(relations, list)
 
 
-@patch('src.parser.scip_parser.subprocess.run')
+@patch("src.parser.scip_parser.subprocess.run")
 def test_auto_index_creation(mock_subprocess, tmp_path):
     """자동 인덱스 생성 테스트"""
     mock_subprocess.return_value = Mock(returncode=0)
@@ -126,7 +124,7 @@ def test_auto_index_creation(mock_subprocess, tmp_path):
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": str(tmp_path / "test.py"),
-        "language": "python"
+        "language": "python",
     }
 
     # 파일이 없으면 자동 생성 시도
@@ -144,7 +142,7 @@ def test_ensure_index_with_existing_directory(sample_scip_index_dir):
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": str(sample_scip_index_dir / "test.py"),
-        "language": "python"
+        "language": "python",
     }
 
     result = parser._ensure_index(file_meta)
@@ -162,7 +160,7 @@ def test_ensure_index_with_existing_file(sample_scip_index_file):
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": str(sample_scip_index_file),
-        "language": "python"
+        "language": "python",
     }
 
     result = parser._ensure_index(file_meta)
@@ -180,7 +178,7 @@ def test_ensure_index_with_nonexistent_path():
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": "/path/to/test.py",
-        "language": "python"
+        "language": "python",
     }
 
     result = parser._ensure_index(file_meta)
@@ -201,21 +199,13 @@ def test_extract_symbols_from_scip():
     parser = ScipParser()
 
     # 샘플 SCIP 데이터 (실제 형식과 다를 수 있음)
-    scip_data = {
-        "symbols": [
-            {
-                "name": "test_function",
-                "kind": "Function",
-                "span": [10, 0, 20, 0]
-            }
-        ]
-    }
+    scip_data = {"symbols": [{"name": "test_function", "kind": "Function", "span": [10, 0, 20, 0]}]}
 
     file_meta = {
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": "/path/to/test.py",
-        "language": "python"
+        "language": "python",
     }
 
     symbols = parser._extract_symbols_from_scip(scip_data, file_meta)
@@ -229,20 +219,14 @@ def test_extract_relations_from_scip():
 
     # 샘플 SCIP 데이터
     scip_data = {
-        "relations": [
-            {
-                "source": "test_function",
-                "target": "helper_function",
-                "type": "calls"
-            }
-        ]
+        "relations": [{"source": "test_function", "target": "helper_function", "type": "calls"}]
     }
 
     file_meta = {
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": "/path/to/test.py",
-        "language": "python"
+        "language": "python",
     }
 
     relations = parser._extract_relations_from_scip(scip_data, file_meta)
@@ -259,7 +243,7 @@ def test_parse_file_error_handling():
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": "/nonexistent/path.py",
-        "language": "python"
+        "language": "python",
     }
 
     # 에러가 발생해도 빈 리스트 반환
@@ -279,7 +263,7 @@ def test_parse_file_with_invalid_scip_data(sample_scip_index_dir):
         "repo_id": "test-repo",
         "path": "test.py",
         "abs_path": str(sample_scip_index_dir / "test.py"),
-        "language": "python"
+        "language": "python",
     }
 
     # 잘못된 데이터여도 에러 없이 빈 리스트 반환
@@ -287,4 +271,3 @@ def test_parse_file_with_invalid_scip_data(sample_scip_index_dir):
 
     assert isinstance(symbols, list)
     assert isinstance(relations, list)
-

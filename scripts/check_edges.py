@@ -46,12 +46,14 @@ def check_edges():
             return False
 
         # 저장소별 엣지 개수
-        cur.execute("""
+        cur.execute(
+            """
             SELECT repo_id, COUNT(*)
             FROM code_edges
             GROUP BY repo_id
             ORDER BY COUNT(*) DESC
-        """)
+        """
+        )
 
         repo_edges = cur.fetchall()
         if repo_edges:
@@ -60,12 +62,14 @@ def check_edges():
                 print(f"  - {repo_id}: {count}개")
 
         # 엣지 타입별 분포
-        cur.execute("""
+        cur.execute(
+            """
             SELECT type, COUNT(*)
             FROM code_edges
             GROUP BY type
             ORDER BY COUNT(*) DESC
-        """)
+        """
+        )
 
         edge_types = cur.fetchall()
         if edge_types:
@@ -74,7 +78,8 @@ def check_edges():
                 print(f"  - {edge_type}: {count}개")
 
         # 엣지 예시 (상세)
-        cur.execute("""
+        cur.execute(
+            """
             SELECT
                 e.repo_id,
                 e.src_id,
@@ -88,12 +93,22 @@ def check_edges():
             JOIN code_nodes n1 ON e.src_id = n1.id AND e.repo_id = n1.repo_id
             JOIN code_nodes n2 ON e.dst_id = n2.id AND e.repo_id = n2.repo_id
             LIMIT 10
-        """)
+        """
+        )
 
         edges = cur.fetchall()
         if edges:
             print("\n엣지 예시 (최대 10개):")
-            for repo_id, _src_id, _dst_id, edge_type, src_name, src_kind, dst_name, dst_kind in edges:
+            for (
+                repo_id,
+                _src_id,
+                _dst_id,
+                edge_type,
+                src_name,
+                src_kind,
+                dst_name,
+                dst_kind,
+            ) in edges:
                 print(f"  - {src_name}({src_kind}) --[{edge_type}]--> {dst_name}({dst_kind})")
 
         conn.close()
@@ -112,10 +127,11 @@ def check_edges():
     except Exception as e:
         print(f"\n❌ 에러: {e}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 if __name__ == "__main__":
     success = check_edges()
     sys.exit(0 if success else 1)
-

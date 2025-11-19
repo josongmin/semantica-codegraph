@@ -16,14 +16,11 @@ sys.path.insert(0, str(project_root))
 def check_docker():
     """Docker 실행 확인"""
     import subprocess
+
     try:
-        result = subprocess.run(
-            ["docker", "ps"],
-            capture_output=True,
-            timeout=5
-        )
+        result = subprocess.run(["docker", "ps"], capture_output=True, timeout=5)
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -31,20 +28,22 @@ def check_postgres():
     """PostgreSQL 연결 확인"""
     try:
         from src.core.config import Config
+
         config = Config.from_env()
 
         import psycopg2
+
         conn = psycopg2.connect(
             host=config.postgres_host,
             port=config.postgres_port,
             user=config.postgres_user,
             password=config.postgres_password,
             dbname=config.postgres_db,
-            connect_timeout=3
+            connect_timeout=3,
         )
         conn.close()
         return True
-    except:
+    except Exception:
         return False
 
 
@@ -52,15 +51,14 @@ def check_meilisearch():
     """MeiliSearch 연결 확인"""
     try:
         from src.core.config import Config
+
         config = Config.from_env()
 
         import requests
-        response = requests.get(
-            f"{config.meilisearch_url}/health",
-            timeout=3
-        )
+
+        response = requests.get(f"{config.meilisearch_url}/health", timeout=3)
         return response.status_code == 200
-    except:
+    except Exception:
         return False
 
 
@@ -189,4 +187,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

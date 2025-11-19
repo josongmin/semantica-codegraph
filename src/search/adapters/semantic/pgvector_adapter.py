@@ -20,11 +20,7 @@ class PgVectorSemanticSearch(SemanticSearchPort):
     - ChunkResult 반환
     """
 
-    def __init__(
-        self,
-        embedding_service: EmbeddingService,
-        embedding_store: EmbeddingStorePort
-    ):
+    def __init__(self, embedding_service: EmbeddingService, embedding_store: EmbeddingStorePort):
         """
         Args:
             embedding_service: 임베딩 서비스
@@ -95,10 +91,7 @@ class PgVectorSemanticSearch(SemanticSearchPort):
 
         # 벡터 검색
         results = self.embedding_store.search_by_vector(
-            repo_id=repo_id,
-            vector=query_vector,
-            k=k,
-            filters=filters
+            repo_id=repo_id, vector=query_vector, k=k, filters=filters
         )
 
         logger.debug(f"Found {len(results)} results")
@@ -108,4 +101,3 @@ class PgVectorSemanticSearch(SemanticSearchPort):
         """저장소 인덱스 삭제"""
         logger.info(f"Deleting embeddings for {repo_id}")
         self.embedding_store.delete_repo_embeddings(repo_id)
-

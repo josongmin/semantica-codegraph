@@ -54,6 +54,7 @@ class TestTokenAccuracy:
         if packer.encoding:
             # 실제 tiktoken 결과와 일치해야 함
             import tiktoken
+
             enc = tiktoken.get_encoding("cl100k_base")
             expected = len(enc.encode(english_code))
             assert tokens == expected
@@ -76,6 +77,7 @@ def authenticate(username, password):
         if packer.encoding:
             # tiktoken 사용 시 정확한 값
             import tiktoken
+
             enc = tiktoken.get_encoding("cl100k_base")
             expected = len(enc.encode(korean_code))
             assert tokens == expected
@@ -126,7 +128,7 @@ class TestRolePriority:
             text="def main(): pass",
             node_id="node_primary",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         # Caller chunk (높은 우선순위)
@@ -138,7 +140,7 @@ class TestRolePriority:
             text="main()",
             node_id="node_caller",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         # Related chunk (낮은 우선순위)
@@ -150,7 +152,7 @@ class TestRolePriority:
             text="def helper(): pass",
             node_id="node_related",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         # Mock chunk_store
@@ -171,21 +173,21 @@ class TestRolePriority:
                 chunk_id="chunk_primary",
                 file_path="main.py",
                 span=(0, 0, 10, 0),
-                features={"final_score": 1.0}
+                features={"final_score": 1.0},
             ),
             Candidate(
                 repo_id=repo_id,
                 chunk_id="chunk_related",
                 file_path="related.py",
                 span=(0, 0, 5, 0),
-                features={"final_score": 0.8, "relation": "related"}
+                features={"final_score": 0.8, "relation": "related"},
             ),
             Candidate(
                 repo_id=repo_id,
                 chunk_id="chunk_caller",
                 file_path="caller.py",
                 span=(0, 0, 5, 0),
-                features={"final_score": 0.7, "relation": "caller"}
+                features={"final_score": 0.7, "relation": "caller"},
             ),
         ]
 
@@ -207,7 +209,7 @@ class TestRolePriority:
             text="def main(): pass",
             node_id="node_primary",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         chunk = CodeChunk(
@@ -218,7 +220,7 @@ class TestRolePriority:
             text="test code",
             node_id="node_test",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         # relation이 "caller"인 경우
@@ -227,7 +229,7 @@ class TestRolePriority:
             chunk_id="chunk_test",
             file_path="test.py",
             span=(0, 0, 5, 0),
-            features={"relation": "caller"}
+            features={"relation": "caller"},
         )
 
         role = packer._estimate_role(chunk, primary_chunk, candidate)
@@ -239,7 +241,7 @@ class TestRolePriority:
             chunk_id="chunk_test",
             file_path="test.py",
             span=(0, 0, 5, 0),
-            features={"relation": "callee"}
+            features={"relation": "callee"},
         )
 
         role = packer._estimate_role(chunk, primary_chunk, candidate)
@@ -255,7 +257,7 @@ class TestRolePriority:
             text="def main(): pass",
             node_id="node_primary",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         # 테스트 파일
@@ -267,7 +269,7 @@ class TestRolePriority:
             text="def test_main(): pass",
             node_id="node_test",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         candidate = Candidate(
@@ -275,7 +277,7 @@ class TestRolePriority:
             chunk_id="chunk_test",
             file_path="test_main.py",
             span=(0, 0, 5, 0),
-            features={}
+            features={},
         )
 
         role = packer._estimate_role(test_chunk, primary_chunk, candidate)
@@ -298,7 +300,7 @@ class TestDeduplication:
             text="def main(): pass",
             node_id="node_1",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         # Mock chunk_store
@@ -311,21 +313,21 @@ class TestDeduplication:
                 chunk_id="chunk_1",
                 file_path="main.py",
                 span=(0, 0, 10, 0),
-                features={"final_score": 1.0}
+                features={"final_score": 1.0},
             ),
             Candidate(
                 repo_id=repo_id,
                 chunk_id="chunk_1",
                 file_path="main.py",
                 span=(0, 0, 10, 0),
-                features={"final_score": 0.9, "source": "lexical"}
+                features={"final_score": 0.9, "source": "lexical"},
             ),
             Candidate(
                 repo_id=repo_id,
                 chunk_id="chunk_1",
                 file_path="main.py",
                 span=(0, 0, 10, 0),
-                features={"final_score": 0.8, "source": "semantic"}
+                features={"final_score": 0.8, "source": "semantic"},
             ),
         ]
 
@@ -349,7 +351,7 @@ class TestDeduplication:
             text="def main(): pass",
             node_id="node_1",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         chunk2 = CodeChunk(
@@ -360,7 +362,7 @@ class TestDeduplication:
             text="pass",
             node_id="node_2",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         chunk3 = CodeChunk(
@@ -371,7 +373,7 @@ class TestDeduplication:
             text="def other(): pass",
             node_id="node_3",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         # Mock chunk_store
@@ -392,21 +394,21 @@ class TestDeduplication:
                 chunk_id="chunk_1",
                 file_path="main.py",
                 span=(0, 0, 10, 0),
-                features={"final_score": 1.0}
+                features={"final_score": 1.0},
             ),
             Candidate(
                 repo_id=repo_id,
                 chunk_id="chunk_2",
                 file_path="main.py",
                 span=(5, 0, 15, 0),
-                features={"final_score": 0.9}
+                features={"final_score": 0.9},
             ),
             Candidate(
                 repo_id=repo_id,
                 chunk_id="chunk_3",
                 file_path="other.py",
                 span=(0, 0, 10, 0),
-                features={"final_score": 0.8}
+                features={"final_score": 0.8},
             ),
         ]
 
@@ -422,34 +424,19 @@ class TestDeduplication:
     def test_spans_overlap_logic(self, packer):
         """_spans_overlap 메서드의 로직 테스트"""
         # 같은 파일, 오버랩 O
-        assert packer._spans_overlap(
-            (0, 0, 10, 0), (5, 0, 15, 0),
-            "main.py", "main.py"
-        ) is True
+        assert packer._spans_overlap((0, 0, 10, 0), (5, 0, 15, 0), "main.py", "main.py") is True
 
         # 같은 파일, 오버랩 X
-        assert packer._spans_overlap(
-            (0, 0, 10, 0), (15, 0, 20, 0),
-            "main.py", "main.py"
-        ) is False
+        assert packer._spans_overlap((0, 0, 10, 0), (15, 0, 20, 0), "main.py", "main.py") is False
 
         # 다른 파일, 오버랩 X (스팬이 같아도)
-        assert packer._spans_overlap(
-            (0, 0, 10, 0), (0, 0, 10, 0),
-            "main.py", "other.py"
-        ) is False
+        assert packer._spans_overlap((0, 0, 10, 0), (0, 0, 10, 0), "main.py", "other.py") is False
 
         # 완전 포함
-        assert packer._spans_overlap(
-            (0, 0, 20, 0), (5, 0, 10, 0),
-            "main.py", "main.py"
-        ) is True
+        assert packer._spans_overlap((0, 0, 20, 0), (5, 0, 10, 0), "main.py", "main.py") is True
 
         # 경계 케이스: 끝과 시작이 같음 (오버랩 아님)
-        assert packer._spans_overlap(
-            (0, 0, 10, 0), (10, 0, 20, 0),
-            "main.py", "main.py"
-        ) is False
+        assert packer._spans_overlap((0, 0, 10, 0), (10, 0, 20, 0), "main.py", "main.py") is False
 
 
 class TestTokenBudget:
@@ -468,7 +455,7 @@ class TestTokenBudget:
             text="def main(): pass",
             node_id="node_primary",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         # 큰 supporting chunk
@@ -480,7 +467,7 @@ class TestTokenBudget:
             text="x" * 1000,  # 매우 큰 청크
             node_id="node_large",
             language="python",
-            attrs={}
+            attrs={},
         )
 
         # Mock chunk_store
@@ -500,14 +487,14 @@ class TestTokenBudget:
                 chunk_id="chunk_primary",
                 file_path="main.py",
                 span=(0, 0, 2, 0),
-                features={"final_score": 1.0}
+                features={"final_score": 1.0},
             ),
             Candidate(
                 repo_id=repo_id,
                 chunk_id="chunk_large",
                 file_path="large.py",
                 span=(0, 0, 100, 0),
-                features={"final_score": 0.9}
+                features={"final_score": 0.9},
             ),
         ]
 
@@ -538,16 +525,11 @@ class TestScoredSnippet:
             span=(0, 0, 10, 0),
             role="caller",
             text="def main(): pass",
-            meta={}
+            meta={},
         )
 
-        scored = ScoredSnippet(
-            snippet=snippet,
-            score=10.5,
-            tokens=100
-        )
+        scored = ScoredSnippet(snippet=snippet, score=10.5, tokens=100)
 
         assert scored.snippet == snippet
         assert scored.score == 10.5
         assert scored.tokens == 100
-

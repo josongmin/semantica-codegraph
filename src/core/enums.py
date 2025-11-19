@@ -24,7 +24,7 @@ class NodeKind(str, Enum):
             NodeKind.Class,
             NodeKind.Method,
             NodeKind.Variable,
-            NodeKind.Import
+            NodeKind.Import,
         }
 
     def is_document_node(self) -> bool:
@@ -38,7 +38,7 @@ class NodeKind(str, Enum):
 
 class EdgeType(str, Enum):
     """코드 그래프 엣지(관계) 타입"""
-    
+
     CALLS = "calls"  # 함수/메서드 호출
     DEFINES = "defines"  # 정의 관계
     BELONGS_TO = "belongs_to"  # 소속 관계 (메서드 → 클래스)
@@ -74,4 +74,3 @@ class EmbeddingModel(str, Enum):
 
     # Cohere
     COHERE_V3 = "embed-english-v3.0"
-

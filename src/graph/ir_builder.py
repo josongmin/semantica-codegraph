@@ -37,7 +37,7 @@ class IRBuilder:
         self,
         raw_symbols: list[RawSymbol],
         raw_relations: list[RawRelation],
-        source_code: dict[str, str] | None = None
+        source_code: dict[str, str] | None = None,
     ) -> tuple[list[CodeNode], list[CodeEdge]]:
         """
         Raw 데이터를 CodeNode/Edge로 변환
@@ -78,17 +78,11 @@ class IRBuilder:
         # 3. 그래프 검증 및 정리
         nodes, edges = self._validate_graph(nodes, edges)
 
-        logger.info(
-            f"IR build completed: {len(nodes)} nodes, {len(edges)} edges"
-        )
+        logger.info(f"IR build completed: {len(nodes)} nodes, {len(edges)} edges")
 
         return nodes, edges
 
-    def _raw_symbol_to_node(
-        self,
-        raw: RawSymbol,
-        source_code: dict[str, str] | None
-    ) -> CodeNode:
+    def _raw_symbol_to_node(self, raw: RawSymbol, source_code: dict[str, str] | None) -> CodeNode:
         """
         RawSymbol → CodeNode 변환
 
@@ -115,13 +109,11 @@ class IRBuilder:
             span=raw.span,
             name=raw.name,
             text=text,
-            attrs=raw.attrs.copy()  # attrs는 그대로 복사
+            attrs=raw.attrs.copy(),  # attrs는 그대로 복사
         )
 
     def _raw_relation_to_edge(
-        self,
-        raw: RawRelation,
-        symbol_to_id: dict[tuple, str]
+        self, raw: RawRelation, symbol_to_id: dict[tuple, str]
     ) -> CodeEdge | None:
         """
         RawRelation → CodeEdge 변환
@@ -139,30 +131,17 @@ class IRBuilder:
         target = raw.attrs.get("target") or raw.attrs.get("target_symbol")
 
         # src_id 찾기
-        src_id = self._find_node_id_by_span(
-            raw.repo_id,
-            raw.file_path,
-            raw.src_span,
-            symbol_to_id
-        )
+        src_id = self._find_node_id_by_span(raw.repo_id, raw.file_path, raw.src_span, symbol_to_id)
 
         # dst_id 찾기
         dst_id = None
         if target:
             # target 이름으로 찾기
-            dst_id = self._find_node_id_by_name(
-                raw.repo_id,
-                raw.file_path,
-                target,
-                symbol_to_id
-            )
+            dst_id = self._find_node_id_by_name(raw.repo_id, raw.file_path, target, symbol_to_id)
         else:
             # span으로 찾기
             dst_id = self._find_node_id_by_span(
-                raw.repo_id,
-                raw.file_path,
-                raw.dst_span,
-                symbol_to_id
+                raw.repo_id, raw.file_path, raw.dst_span, symbol_to_id
             )
 
         if not src_id:
@@ -170,18 +149,11 @@ class IRBuilder:
             return None
 
         if not dst_id:
-            logger.debug(
-                f"Destination node not found for relation: {raw.type} "
-                f"(target={target})"
-            )
+            logger.debug(f"Destination node not found for relation: {raw.type} (target={target})")
             return None
 
         return CodeEdge(
-            repo_id=raw.repo_id,
-            src_id=src_id,
-            dst_id=dst_id,
-            type=raw.type,
-            attrs=raw.attrs.copy()
+            repo_id=raw.repo_id, src_id=src_id, dst_id=dst_id, type=raw.type, attrs=raw.attrs.copy()
         )
 
     def _generate_node_id(self, raw: RawSymbol) -> str:
@@ -202,12 +174,7 @@ class IRBuilder:
             고유 ID
         """
         # 기본 형식
-        id_parts = [
-            raw.repo_id,
-            raw.file_path,
-            raw.kind,
-            raw.name
-        ]
+        id_parts = [raw.repo_id, raw.file_path, raw.kind, raw.name]
 
         node_id = ":".join(id_parts)
 
@@ -218,11 +185,7 @@ class IRBuilder:
 
         return node_id
 
-    def _extract_text(
-        self,
-        raw: RawSymbol,
-        source_code: dict[str, str] | None
-    ) -> str:
+    def _extract_text(self, raw: RawSymbol, source_code: dict[str, str] | None) -> str:
         """
         Span으로 텍스트 추출
 
@@ -239,10 +202,7 @@ class IRBuilder:
             추출된 텍스트 (실패 시 빈 문자열)
         """
         if not source_code or raw.file_path not in source_code:
-            logger.debug(
-                f"Source code not available for {raw.file_path}, "
-                "text will be empty"
-            )
+            logger.debug(f"Source code not available for {raw.file_path}, text will be empty")
             return ""
 
         source = source_code[raw.file_path]
@@ -254,8 +214,7 @@ class IRBuilder:
             # 범위 체크
             if start_line >= len(lines) or end_line > len(lines):
                 logger.warning(
-                    f"Span out of range for {raw.name}: "
-                    f"span={raw.span}, total_lines={len(lines)}"
+                    f"Span out of range for {raw.name}: span={raw.span}, total_lines={len(lines)}"
                 )
                 return ""
 
@@ -288,11 +247,7 @@ class IRBuilder:
             return ""
 
     def _find_node_id_by_span(
-        self,
-        repo_id: RepoId,
-        file_path: str,
-        span: Span,
-        symbol_to_id: dict[tuple, str]
+        self, repo_id: RepoId, file_path: str, span: Span, symbol_to_id: dict[tuple, str]
     ) -> str | None:
         """
         Span으로 node_id 찾기
@@ -305,6 +260,7 @@ class IRBuilder:
         2. 주어진 span을 포함하는 심볼 (가장 작은 것)
         3. 주어진 span과 겹치는 심볼 (가장 작은 것)
         """
+
         def spans_equal(span1: Span, span2: Span) -> bool:
             """두 span이 정확히 일치하는지 확인"""
             return span1 == span2
@@ -377,11 +333,7 @@ class IRBuilder:
         return None
 
     def _find_node_id_by_name(
-        self,
-        repo_id: RepoId,
-        file_path: str,
-        name: str,
-        symbol_to_id: dict[tuple, str]
+        self, repo_id: RepoId, file_path: str, name: str, symbol_to_id: dict[tuple, str]
     ) -> str | None:
         """
         이름으로 node_id 찾기
@@ -410,9 +362,7 @@ class IRBuilder:
         return (raw.file_path, raw.name, raw.kind, raw.span)
 
     def _validate_graph(
-        self,
-        nodes: list[CodeNode],
-        edges: list[CodeEdge]
+        self, nodes: list[CodeNode], edges: list[CodeEdge]
     ) -> tuple[list[CodeNode], list[CodeEdge]]:
         """
         그래프 검증 및 정리
@@ -468,4 +418,3 @@ class IRBuilder:
         )
 
         return list(unique_nodes.values()), valid_edges
-

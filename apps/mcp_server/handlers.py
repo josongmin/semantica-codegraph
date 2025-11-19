@@ -24,6 +24,16 @@ class MCPHandlers:
 
     # ==================== Tools ====================
 
+    async def handle_list_repositories(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """
+        list_repositories 도구 핸들러
+
+        Returns:
+            {"repositories": [...]}
+        """
+        repositories = await self.service.list_repositories()
+        return {"repositories": repositories}
+
     async def handle_search_code(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         search_code 도구 핸들러
@@ -50,11 +60,7 @@ class MCPHandlers:
         language = arguments.get("language")
 
         results = await self.service.search_code(
-            query=query,
-            repo_ids=repo_ids,
-            limit=limit,
-            file_path=file_path,
-            language=language
+            query=query, repo_ids=repo_ids, limit=limit, file_path=file_path, language=language
         )
 
         return {"results": results}
@@ -81,9 +87,7 @@ class MCPHandlers:
         kind = arguments.get("kind")
 
         definitions = await self.service.find_definition(
-            symbol_name=symbol_name,
-            repo_ids=repo_ids,
-            kind=kind
+            symbol_name=symbol_name, repo_ids=repo_ids, kind=kind
         )
 
         return {"definitions": definitions}
@@ -119,7 +123,7 @@ class MCPHandlers:
             node_id=node_id,
             direction=direction,
             edge_types=edge_types,
-            depth=depth
+            depth=depth,
         )
 
         return result
@@ -149,10 +153,7 @@ class MCPHandlers:
         max_tokens = arguments.get("max_tokens", 4000)
 
         result = await self.service.get_context(
-            repo_id=repo_id,
-            file_path=file_path,
-            line=line,
-            max_tokens=max_tokens
+            repo_id=repo_id, file_path=file_path, line=line, max_tokens=max_tokens
         )
 
         return result
@@ -186,11 +187,7 @@ class MCPHandlers:
             node_data = await self.service.get_node(repo_id, node_id)
 
             if node_data:
-                return {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "data": node_data
-                }
+                return {"uri": uri, "mimeType": "application/json", "data": node_data}
             return None
 
         elif uri.startswith("file://"):
@@ -206,10 +203,7 @@ class MCPHandlers:
             return {
                 "uri": uri,
                 "mimeType": "application/json",
-                "data": {
-                    "file_path": file_path,
-                    "chunks": chunks
-                }
+                "data": {"file_path": file_path, "chunks": chunks},
             }
 
         else:
@@ -227,121 +221,145 @@ class MCPHandlers:
         """
         return [
             {
+                "name": "list_repositories",
+                "description": (
+                    "인덱싱된 코드베이스 저장소 목록 조회\n\n"
+                    "용도: 에이전트가 어떤 코드베이스가 있는지 먼저 알아야 함\n"
+                    "시나리오:\n"
+                    "  User: '어디에 인증 로직이 있어?'\n"
+                    "  Agent: list_repositories() → [repo1, repo2, repo3]\n"
+                    "         search_code('authentication', repo_ids=[repo1, repo2, repo3])"
+                ),
+                "inputSchema": {"type": "object", "properties": {}, "required": []},
+            },
+            {
                 "name": "search_code",
-                "description": "코드베이스에서 하이브리드 검색 (키워드, 의미론, 그래프, 퍼지)",
+                "description": (
+                    "쿼리로 관련 코드 찾기 (하이브리드 검색: 키워드 + 의미론 + 그래프 + 퍼지)\n\n"
+                    "용도: 쿼리로 관련 코드 찾기\n"
+                    "시나리오:\n"
+                    "  User: 'API 에러 핸들링 어떻게 돼있어?'\n"
+                    "  Agent: search_code('error handling API')\n"
+                    "         → [chunk1: try-except 블록, chunk2: HTTPException, ...]"
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "검색 쿼리"
-                        },
+                        "query": {"type": "string", "description": "검색 쿼리"},
                         "repo_ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "검색할 저장소 ID 목록 (옵션)"
+                            "description": "검색할 저장소 ID 목록 (옵션, 미지정 시 모든 저장소)",
                         },
                         "limit": {
                             "type": "integer",
                             "description": "반환 결과 수 (기본값: 20)",
-                            "default": 20
+                            "default": 20,
                         },
                         "file_path": {
                             "type": "string",
-                            "description": "현재 파일 경로 (옵션)"
+                            "description": "현재 파일 경로 (컨텍스트 용, 옵션)",
                         },
                         "language": {
                             "type": "string",
-                            "description": "언어 필터 (옵션)"
-                        }
+                            "description": "언어 필터 (python, typescript 등, 옵션)",
+                        },
                     },
-                    "required": ["query"]
-                }
+                    "required": ["query"],
+                },
             },
             {
                 "name": "find_definition",
-                "description": "심볼 정의 위치 찾기",
+                "description": (
+                    "심볼(함수, 클래스, 변수) 정의 위치 찾기\n\n"
+                    "용도: 심볼 정의 위치 찾기\n"
+                    "시나리오:\n"
+                    "  User: 'calculate_total 함수 정의 어디 있어?'\n"
+                    "  Agent: find_definition('calculate_total')\n"
+                    "         → {file_path: 'utils.py', line: 45, text: 'def calculate_total...'}"
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "symbol_name": {
                             "type": "string",
-                            "description": "심볼 이름"
+                            "description": "찾을 심볼 이름 (함수명, 클래스명 등)",
                         },
                         "repo_ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "검색할 저장소 ID 목록 (옵션)"
+                            "description": "검색할 저장소 ID 목록 (옵션, 미지정 시 모든 저장소)",
                         },
                         "kind": {
                             "type": "string",
-                            "description": "심볼 종류 필터 (Function, Class, Method 등)"
-                        }
+                            "description": "심볼 종류 필터 (Function, Class, Method, Variable 등, 옵션)",
+                        },
                     },
-                    "required": ["symbol_name"]
-                }
+                    "required": ["symbol_name"],
+                },
             },
             {
                 "name": "explore_graph",
-                "description": "코드 그래프 관계 탐색",
+                "description": (
+                    "코드 그래프 관계 탐색 (호출 관계, 의존성)\n\n"
+                    "용도: 코드 관계 탐색 (호출 관계, 의존성)\n"
+                    "시나리오:\n"
+                    "  User: '이 함수 어디서 호출돼?'\n"
+                    "  Agent: find_definition('process_payment')  # node_id 얻기\n"
+                    "         explore_graph(node_id, direction='incoming', edge_types=['calls'])\n"
+                    "         → [caller1, caller2, ...]"
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "repo_id": {
-                            "type": "string",
-                            "description": "저장소 ID"
-                        },
-                        "node_id": {
-                            "type": "string",
-                            "description": "시작 노드 ID"
-                        },
+                        "repo_id": {"type": "string", "description": "저장소 ID"},
+                        "node_id": {"type": "string", "description": "시작 노드 ID"},
                         "direction": {
                             "type": "string",
                             "enum": ["outgoing", "incoming", "both"],
-                            "description": "탐색 방향 (기본값: both)",
-                            "default": "both"
+                            "description": "탐색 방향 (outgoing: 이 노드가 호출하는 것, incoming: 이 노드를 호출하는 것, both: 양방향, 기본값: both)",
+                            "default": "both",
                         },
                         "edge_types": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "엣지 타입 필터 (calls, defines 등)"
+                            "description": "엣지 타입 필터 (calls, defines, uses, imports 등, 옵션)",
                         },
                         "depth": {
                             "type": "integer",
                             "description": "탐색 깊이 (기본값: 1)",
-                            "default": 1
-                        }
+                            "default": 1,
+                        },
                     },
-                    "required": ["repo_id", "node_id"]
-                }
+                    "required": ["repo_id", "node_id"],
+                },
             },
             {
                 "name": "get_context",
-                "description": "특정 위치의 관련 코드 컨텍스트 가져오기",
+                "description": (
+                    "특정 위치의 관련 코드 컨텍스트 가져오기 (LLM에게 전달할 패킹된 컨텍스트)\n\n"
+                    "용도: 특정 위치의 관련 컨텍스트 패킹 (LLM에게 전달)\n"
+                    "시나리오:\n"
+                    "  User: '이 코드 설명해줘' (커서 위치: main.py:150)\n"
+                    "  Agent: get_context(repo_id, 'main.py', 150)\n"
+                    "         → {primary: 해당 함수, supporting: 관련 클래스/함수}\n"
+                    "         format_prompt(context) → LLM 호출"
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "repo_id": {
-                            "type": "string",
-                            "description": "저장소 ID"
-                        },
-                        "file_path": {
-                            "type": "string",
-                            "description": "파일 경로"
-                        },
-                        "line": {
-                            "type": "integer",
-                            "description": "라인 번호"
-                        },
+                        "repo_id": {"type": "string", "description": "저장소 ID"},
+                        "file_path": {"type": "string", "description": "파일 경로"},
+                        "line": {"type": "integer", "description": "라인 번호 (0-based)"},
                         "max_tokens": {
                             "type": "integer",
                             "description": "최대 토큰 수 (기본값: 4000)",
-                            "default": 4000
-                        }
+                            "default": 4000,
+                        },
                     },
-                    "required": ["repo_id", "file_path", "line"]
-                }
-            }
+                    "required": ["repo_id", "file_path", "line"],
+                },
+            },
         ]
 
     def get_resource_templates(self) -> list[dict[str, Any]]:
@@ -356,12 +374,12 @@ class MCPHandlers:
                 "uriTemplate": "node://{repo_id}/{node_id}",
                 "name": "Code Node",
                 "description": "코드 그래프 노드 정보",
-                "mimeType": "application/json"
+                "mimeType": "application/json",
             },
             {
                 "uriTemplate": "file://{repo_id}/{file_path}",
                 "name": "File Chunks",
                 "description": "파일의 모든 코드 청크",
-                "mimeType": "application/json"
-            }
+                "mimeType": "application/json",
+            },
         ]

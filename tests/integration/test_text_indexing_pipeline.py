@@ -1,6 +1,5 @@
 """텍스트 파일 인덱싱 통합 테스트"""
 
-
 import pytest
 
 from src.chunking.chunker import Chunker
@@ -17,7 +16,8 @@ def test_repo_with_docs(tmp_path):
     repo.mkdir()
 
     # Python 코드
-    (repo / "main.py").write_text("""
+    (repo / "main.py").write_text(
+        """
 def hello():
     '''Say hello'''
     print("Hello, World!")
@@ -25,10 +25,12 @@ def hello():
 class App:
     def run(self):
         hello()
-""")
+"""
+    )
 
     # 문서 파일
-    (repo / "README.md").write_text("""# Mixed Repo
+    (repo / "README.md").write_text(
+        """# Mixed Repo
 
 This project contains both code and documentation.
 
@@ -38,20 +40,25 @@ This project contains both code and documentation.
 
 ## Usage
 Run `python main.py`
-""")
+"""
+    )
 
-    (repo / "CHANGELOG.md").write_text("""# Changelog
+    (repo / "CHANGELOG.md").write_text(
+        """# Changelog
 
 ## v1.0.0
 - Initial release
-""")
+"""
+    )
 
-    (repo / "config.json").write_text("""
+    (repo / "config.json").write_text(
+        """
 {
   "app_name": "mixed_repo",
   "version": "1.0.0"
 }
-""")
+"""
+    )
 
     return repo
 
@@ -84,12 +91,14 @@ class TestTextIndexingPipeline:
 
         # Python 파일 파싱
         py_parser = create_parser("python")
-        py_symbols, py_relations = py_parser.parse_file({
-            "repo_id": "test",
-            "path": "main.py",
-            "abs_path": str(test_repo_with_docs / "main.py"),
-            "language": "python"
-        })
+        py_symbols, py_relations = py_parser.parse_file(
+            {
+                "repo_id": "test",
+                "path": "main.py",
+                "abs_path": str(test_repo_with_docs / "main.py"),
+                "language": "python",
+            }
+        )
 
         # 함수, 클래스 노드 생성
         py_kinds = {s.kind for s in py_symbols}
@@ -97,12 +106,14 @@ class TestTextIndexingPipeline:
 
         # Markdown 파일 파싱
         md_parser = create_parser("markdown")
-        md_symbols, md_relations = md_parser.parse_file({
-            "repo_id": "test",
-            "path": "README.md",
-            "abs_path": str(test_repo_with_docs / "README.md"),
-            "language": "markdown"
-        })
+        md_symbols, md_relations = md_parser.parse_file(
+            {
+                "repo_id": "test",
+                "path": "README.md",
+                "abs_path": str(test_repo_with_docs / "README.md"),
+                "language": "markdown",
+            }
+        )
 
         # Document 노드 생성
         assert len(md_symbols) == 1
@@ -115,21 +126,25 @@ class TestTextIndexingPipeline:
 
         # 코드 심볼
         py_parser = create_parser("python")
-        py_symbols, py_relations = py_parser.parse_file({
-            "repo_id": "test",
-            "path": "main.py",
-            "abs_path": str(test_repo_with_docs / "main.py"),
-            "language": "python"
-        })
+        py_symbols, py_relations = py_parser.parse_file(
+            {
+                "repo_id": "test",
+                "path": "main.py",
+                "abs_path": str(test_repo_with_docs / "main.py"),
+                "language": "python",
+            }
+        )
 
         # 문서 심볼
         md_parser = create_parser("markdown")
-        md_symbols, md_relations = md_parser.parse_file({
-            "repo_id": "test",
-            "path": "README.md",
-            "abs_path": str(test_repo_with_docs / "README.md"),
-            "language": "markdown"
-        })
+        md_symbols, md_relations = md_parser.parse_file(
+            {
+                "repo_id": "test",
+                "path": "README.md",
+                "abs_path": str(test_repo_with_docs / "README.md"),
+                "language": "markdown",
+            }
+        )
 
         # 통합
         all_symbols = py_symbols + md_symbols
@@ -164,18 +179,18 @@ class TestTextIndexingPipeline:
         from src.parser import create_parser
 
         md_parser = create_parser("markdown")
-        md_symbols, _ = md_parser.parse_file({
-            "repo_id": "test",
-            "path": "README.md",
-            "abs_path": str(test_repo_with_docs / "README.md"),
-            "language": "markdown"
-        })
+        md_symbols, _ = md_parser.parse_file(
+            {
+                "repo_id": "test",
+                "path": "README.md",
+                "abs_path": str(test_repo_with_docs / "README.md"),
+                "language": "markdown",
+            }
+        )
 
         ir_builder = IRBuilder()
         nodes, _ = ir_builder.build(
-            md_symbols,
-            [],
-            {"README.md": (test_repo_with_docs / "README.md").read_text()}
+            md_symbols, [], {"README.md": (test_repo_with_docs / "README.md").read_text()}
         )
 
         chunker = Chunker()
@@ -224,12 +239,14 @@ class TestTextIndexingEdgeCases:
         empty_md.write_text("")
 
         parser = create_parser("markdown")
-        symbols, relations = parser.parse_file({
-            "repo_id": "test",
-            "path": "empty.md",
-            "abs_path": str(empty_md),
-            "language": "markdown"
-        })
+        symbols, relations = parser.parse_file(
+            {
+                "repo_id": "test",
+                "path": "empty.md",
+                "abs_path": str(empty_md),
+                "language": "markdown",
+            }
+        )
 
         assert len(symbols) == 1
         assert symbols[0].attrs["text"] == ""
@@ -243,12 +260,14 @@ class TestTextIndexingEdgeCases:
         large_md.write_text(content)
 
         parser = create_parser("markdown")
-        symbols, _ = parser.parse_file({
-            "repo_id": "test",
-            "path": "large.md",
-            "abs_path": str(large_md),
-            "language": "markdown"
-        })
+        symbols, _ = parser.parse_file(
+            {
+                "repo_id": "test",
+                "path": "large.md",
+                "abs_path": str(large_md),
+                "language": "markdown",
+            }
+        )
 
         ir_builder = IRBuilder()
         nodes, _ = ir_builder.build(symbols, [], {"large.md": content})
@@ -269,13 +288,9 @@ class TestTextIndexingEdgeCases:
         utf8_file.write_text("UTF-8 텍스트", encoding="utf-8")
 
         parser = create_parser("text")
-        symbols, _ = parser.parse_file({
-            "repo_id": "test",
-            "path": "utf8.txt",
-            "abs_path": str(utf8_file),
-            "language": "text"
-        })
+        symbols, _ = parser.parse_file(
+            {"repo_id": "test", "path": "utf8.txt", "abs_path": str(utf8_file), "language": "text"}
+        )
 
         assert len(symbols) == 1
         assert "UTF-8" in symbols[0].attrs["text"]
-

@@ -17,7 +17,7 @@ def sample_chunk():
         span=(0, 0, 5, 0),
         language="python",
         text="def hello():\n    return 'world'",
-        attrs={"docstring": "Returns world"}
+        attrs={"docstring": "Returns world"},
     )
 
 
@@ -110,11 +110,7 @@ def test_embed_batch_codestral():
         api_key=config.embedding_api_key,
     )
 
-    texts = [
-        "def foo(): return 42",
-        "class Bar: pass",
-        "async def baz(): await something()"
-    ]
+    texts = ["def foo(): return 42", "class Bar: pass", "async def baz(): await something()"]
 
     vectors = service.embed_texts(texts)
 
@@ -142,4 +138,3 @@ def test_embed_chunk_codestral(sample_chunk):
     # 기본 차원 사용 (Codestral은 1536)
     assert len(vector) == 1536
     assert isinstance(vector, list)
-

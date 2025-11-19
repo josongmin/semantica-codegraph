@@ -1,6 +1,5 @@
 """Config 테스트"""
 
-
 from src.core.config import Config
 from src.core.enums import EmbeddingModel, LexicalSearchBackend
 
@@ -55,4 +54,3 @@ def test_config_embedding():
     assert config.embedding_api_key is None
     assert config.embedding_dimension is None  # 모델 기본값 사용
     assert config.mistral_api_base == "https://api.mistral.ai/v1"
-

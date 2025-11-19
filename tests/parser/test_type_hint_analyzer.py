@@ -7,11 +7,11 @@ from src.parser.type_hint_analyzer import TypeHintAnalyzer
 
 def test_simple_getattr_with_type_hint():
     """간단한 getattr 호출 - 타입 힌트 있음"""
-    code = '''
+    code = """
 def process_user(user: UserAuthenticator):
     method = getattr(user, "authenticate")
     return method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -23,11 +23,11 @@ def process_user(user: UserAuthenticator):
 
 def test_getattr_without_type_hint():
     """타입 힌트 없으면 추론 불가"""
-    code = '''
+    code = """
 def process_user(user):  # 타입 힌트 없음
     method = getattr(user, "authenticate")
     return method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -37,7 +37,7 @@ def process_user(user):  # 타입 힌트 없음
 
 def test_function_return_type():
     """함수 반환 타입 추론"""
-    code = '''
+    code = """
 def get_authenticator() -> UserAuthenticator:
     return UserAuthenticator()
 
@@ -45,7 +45,7 @@ def login():
     auth = get_authenticator()
     method = getattr(auth, "authenticate")
     return method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -58,12 +58,12 @@ def login():
 
 def test_annotated_assignment():
     """타입 어노테이션이 있는 변수 할당"""
-    code = '''
+    code = """
 def process():
     user: UserAuthenticator = get_user()
     method = getattr(user, "login")
     return method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -74,12 +74,12 @@ def process():
 
 def test_multiple_getattr_calls():
     """여러 getattr 호출"""
-    code = '''
+    code = """
 def process(user: UserAuth, admin: AdminAuth):
     user_method = getattr(user, "login")
     admin_method = getattr(admin, "verify")
     return user_method(), admin_method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -92,12 +92,12 @@ def process(user: UserAuth, admin: AdminAuth):
 
 def test_getattr_with_dynamic_attribute():
     """동적 속성 이름 - 추론 불가"""
-    code = '''
+    code = """
 def process(user: UserAuth):
     method_name = get_method_name()  # 동적
     method = getattr(user, method_name)
     return method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -107,11 +107,11 @@ def process(user: UserAuth):
 
 def test_module_qualified_type():
     """모듈 경로 포함 타입"""
-    code = '''
+    code = """
 def process(user: auth.models.UserAuthenticator):
     method = getattr(user, "authenticate")
     return method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -122,14 +122,14 @@ def process(user: auth.models.UserAuthenticator):
 
 def test_optional_type():
     """Optional 타입"""
-    code = '''
+    code = """
 from typing import Optional
 
 def process(user: Optional[UserAuth]):
     if user:
         method = getattr(user, "login")
         return method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -141,9 +141,9 @@ def process(user: Optional[UserAuth]):
 
 def test_syntax_error_handling():
     """구문 오류 처리"""
-    code = '''
+    code = """
 def invalid syntax here
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -154,11 +154,11 @@ def invalid syntax here
 
 def test_confidence_level():
     """추론 확률 체크"""
-    code = '''
+    code = """
 def process(user: UserAuth):
     method = getattr(user, "login")
     return method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -169,11 +169,11 @@ def process(user: UserAuth):
 
 def test_line_number():
     """라인 번호 확인"""
-    code = '''
+    code = """
 def process(user: UserAuth):
     method = getattr(user, "login")
     return method()
-'''
+"""
 
     analyzer = TypeHintAnalyzer()
     inferred = analyzer.analyze(code, "test.py")
@@ -185,4 +185,3 @@ def process(user: UserAuth):
 if __name__ == "__main__":
     # 빠른 테스트
     pytest.main([__file__, "-v"])
-

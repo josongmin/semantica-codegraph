@@ -25,21 +25,21 @@ def sample_candidates():
             chunk_id="chunk-1",
             features={"final_score": 0.9, "semantic_score": 0.9},
             file_path="main.py",
-            span=(0, 0, 10, 0)
+            span=(0, 0, 10, 0),
         ),
         Candidate(
             repo_id="test",
             chunk_id="chunk-2",
             features={"final_score": 0.7, "lexical_score": 0.7},
             file_path="utils.py",
-            span=(0, 0, 5, 0)
+            span=(0, 0, 5, 0),
         ),
         Candidate(
             repo_id="test",
             chunk_id="chunk-3",
             features={"final_score": 0.5, "graph_score": 0.5},
             file_path="helpers.py",
-            span=(0, 0, 8, 0)
+            span=(0, 0, 8, 0),
         ),
     ]
 
@@ -57,15 +57,12 @@ def test_packer_basic(mock_stores, sample_candidates):
         span=(0, 0, 10, 0),
         language="python",
         text="def hello():\n    return 'world'",
-        attrs={}
+        attrs={},
     )
 
     packer = ContextPacker(chunk_store, graph_store)
 
-    context = packer.pack(
-        candidates=sample_candidates,
-        max_tokens=1000
-    )
+    context = packer.pack(candidates=sample_candidates, max_tokens=1000)
 
     assert context.primary is not None
     assert context.primary.role == "primary"
@@ -81,19 +78,34 @@ def test_packer_with_supporting(mock_stores, sample_candidates):
     def get_chunk_side_effect(repo_id, chunk_id):
         chunks = {
             "chunk-1": CodeChunk(
-                repo_id="test", id="chunk-1", node_id="node-1",
-                file_path="main.py", span=(0, 0, 10, 0), language="python",
-                text="def hello():\n    return 'world'", attrs={}
+                repo_id="test",
+                id="chunk-1",
+                node_id="node-1",
+                file_path="main.py",
+                span=(0, 0, 10, 0),
+                language="python",
+                text="def hello():\n    return 'world'",
+                attrs={},
             ),
             "chunk-2": CodeChunk(
-                repo_id="test", id="chunk-2", node_id="node-2",
-                file_path="utils.py", span=(0, 0, 5, 0), language="python",
-                text="def util():\n    pass", attrs={}
+                repo_id="test",
+                id="chunk-2",
+                node_id="node-2",
+                file_path="utils.py",
+                span=(0, 0, 5, 0),
+                language="python",
+                text="def util():\n    pass",
+                attrs={},
             ),
             "chunk-3": CodeChunk(
-                repo_id="test", id="chunk-3", node_id="node-3",
-                file_path="helpers.py", span=(0, 0, 8, 0), language="python",
-                text="def helper():\n    return True", attrs={}
+                repo_id="test",
+                id="chunk-3",
+                node_id="node-3",
+                file_path="helpers.py",
+                span=(0, 0, 8, 0),
+                language="python",
+                text="def helper():\n    return True",
+                attrs={},
             ),
         }
         return chunks.get(chunk_id)
@@ -102,10 +114,7 @@ def test_packer_with_supporting(mock_stores, sample_candidates):
 
     packer = ContextPacker(chunk_store, graph_store)
 
-    context = packer.pack(
-        candidates=sample_candidates,
-        max_tokens=1000
-    )
+    context = packer.pack(candidates=sample_candidates, max_tokens=1000)
 
     assert context.primary is not None
     assert len(context.supporting) > 0
@@ -130,16 +139,13 @@ def test_packer_token_limit(mock_stores, sample_candidates):
         span=(0, 0, 100, 0),
         language="python",
         text=long_text,
-        attrs={}
+        attrs={},
     )
 
     packer = ContextPacker(chunk_store, graph_store)
 
     # 작은 토큰 제한
-    context = packer.pack(
-        candidates=sample_candidates,
-        max_tokens=200
-    )
+    context = packer.pack(candidates=sample_candidates, max_tokens=200)
 
     # Primary만 포함되고 supporting은 거의 없어야 함
     assert context.primary is not None
@@ -181,7 +187,7 @@ def test_packer_metadata_preservation(mock_stores, sample_candidates):
         span=(0, 0, 10, 0),
         language="python",
         text="def hello(): pass",
-        attrs={"docstring": "Hello function"}
+        attrs={"docstring": "Hello function"},
     )
 
     packer = ContextPacker(chunk_store, graph_store)
@@ -207,7 +213,7 @@ def test_to_prompt_markdown(mock_stores):
         span=(0, 0, 5, 0),
         role="primary",
         text="def hello():\n    return 'world'",
-        meta={"chunk_id": "chunk-1"}
+        meta={"chunk_id": "chunk-1"},
     )
 
     supporting = [
@@ -217,7 +223,7 @@ def test_to_prompt_markdown(mock_stores):
             span=(0, 0, 3, 0),
             role="caller",
             text="def caller():\n    hello()",
-            meta={"chunk_id": "chunk-2"}
+            meta={"chunk_id": "chunk-2"},
         ),
         PackedSnippet(
             repo_id="test",
@@ -225,7 +231,7 @@ def test_to_prompt_markdown(mock_stores):
             span=(0, 0, 4, 0),
             role="callee",
             text="def helper():\n    pass",
-            meta={"chunk_id": "chunk-3"}
+            meta={"chunk_id": "chunk-3"},
         ),
     ]
 
@@ -261,7 +267,7 @@ def test_to_prompt_plain(mock_stores):
         span=(0, 0, 5, 0),
         role="primary",
         text="def hello():\n    return 'world'",
-        meta={}
+        meta={},
     )
 
     context = PackedContext(primary=primary, supporting=[])
@@ -289,7 +295,7 @@ def test_to_prompt_without_query(mock_stores):
         span=(0, 0, 5, 0),
         role="primary",
         text="def hello(): pass",
-        meta={}
+        meta={},
     )
 
     context = PackedContext(primary=primary, supporting=[])
@@ -318,4 +324,3 @@ def test_detect_language(mock_stores):
     assert packer._detect_language("lib.rs") == "rust"
     assert packer._detect_language("config.yaml") == "yaml"
     assert packer._detect_language("unknown.xyz") == "text"  # 알 수 없는 확장자
-

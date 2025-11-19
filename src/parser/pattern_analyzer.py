@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CallPattern:
     """호출 패턴 정의"""
+
     name: str
     pattern: re.Pattern
     confidence: float
@@ -33,6 +34,7 @@ class CallPattern:
 @dataclass
 class PatternMatch:
     """패턴 매칭 결과"""
+
     pattern_name: str
     matched_text: str
     line: int
@@ -60,23 +62,18 @@ class PatternAnalyzer:
         # Django generic view handler
         CallPattern(
             name="django_handler",
-            pattern=re.compile(
-                r'getattr\s*\(\s*self\s*,\s*f?["\']handle_'
-            ),
+            pattern=re.compile(r'getattr\s*\(\s*self\s*,\s*f?["\']handle_'),
             confidence=0.85,
             description="Django generic view dispatch pattern",
-            framework="django"
+            framework="django",
         ),
-
         # Event handler (범용)
         CallPattern(
             name="event_handler",
-            pattern=re.compile(
-                r'on_(\w+)(?:_handler)?'
-            ),
+            pattern=re.compile(r"on_(\w+)(?:_handler)?"),
             confidence=0.80,
             description="Event handler pattern (generic)",
-            framework=None  # 범용
+            framework=None,  # 범용
         ),
     ]
 
@@ -106,10 +103,7 @@ class PatternAnalyzer:
         return active
 
     def analyze(
-        self,
-        code: str,
-        file_path: str,
-        available_symbols: set[str] | None = None
+        self, code: str, file_path: str, available_symbols: set[str] | None = None
     ) -> list[PatternMatch]:
         """
         코드에서 패턴 찾기
@@ -141,11 +135,7 @@ class PatternAnalyzer:
                 node_code = self._extract_node_code(code, node)
                 if node_code:
                     # 패턴 매칭
-                    node_matches = self._match_patterns(
-                        node_code,
-                        node,
-                        available_symbols
-                    )
+                    node_matches = self._match_patterns(node_code, node, available_symbols)
                     matches.extend(node_matches)
 
         logger.debug(f"Pattern analysis: {len(matches)} matches in {file_path}")
@@ -159,16 +149,13 @@ class PatternAnalyzer:
             return ast.get_source_segment(code, node)
         except (AttributeError, ValueError):
             # Fallback: 라인 번호로 추출
-            lines = code.split('\n')
+            lines = code.split("\n")
             start = node.lineno - 1
-            end = node.end_lineno if hasattr(node, 'end_lineno') else start + 1
-            return '\n'.join(lines[start:end])
+            end = node.end_lineno if hasattr(node, "end_lineno") else start + 1
+            return "\n".join(lines[start:end])
 
     def _match_patterns(
-        self,
-        code: str,
-        node: ast.AST,
-        available_symbols: set[str] | None
+        self, code: str, node: ast.AST, available_symbols: set[str] | None
     ) -> list[PatternMatch]:
         """코드에서 패턴 매칭"""
         matches = []
@@ -178,15 +165,11 @@ class PatternAnalyzer:
 
             for match in regex_matches:
                 # 패턴별 suggestion 생성
-                suggestions = self._generate_suggestions(
-                    pattern,
-                    match,
-                    available_symbols
-                )
+                suggestions = self._generate_suggestions(pattern, match, available_symbols)
 
                 if suggestions:
                     # 매칭 위치 계산
-                    line_offset = code[:match.start()].count('\n')
+                    line_offset = code[: match.start()].count("\n")
                     actual_line = node.lineno + line_offset
 
                     matches.append(
@@ -195,22 +178,16 @@ class PatternAnalyzer:
                             matched_text=match.group(0),
                             line=actual_line,
                             confidence=pattern.confidence,
-                            suggestions=suggestions
+                            suggestions=suggestions,
                         )
                     )
 
-                    logger.debug(
-                        f"Matched {pattern.name}: {match.group(0)} "
-                        f"→ {suggestions}"
-                    )
+                    logger.debug(f"Matched {pattern.name}: {match.group(0)} → {suggestions}")
 
         return matches
 
     def _generate_suggestions(
-        self,
-        pattern: CallPattern,
-        match: re.Match,
-        available_symbols: set[str] | None
+        self, pattern: CallPattern, match: re.Match, available_symbols: set[str] | None
     ) -> list[str]:
         """
         패턴 매칭 결과에서 타겟 심볼 추론
@@ -250,12 +227,7 @@ class PatternAnalyzer:
 
         return suggestions
 
-    def to_relations(
-        self,
-        matches: list[PatternMatch],
-        repo_id: str,
-        file_path: str
-    ) -> list[dict]:
+    def to_relations(self, matches: list[PatternMatch], repo_id: str, file_path: str) -> list[dict]:
         """
         패턴 매칭 결과를 RawRelation 형태로 변환
 
@@ -266,19 +238,21 @@ class PatternAnalyzer:
 
         for match in matches:
             for target in match.suggestions:
-                relations.append({
-                    "source": f"pattern:{match.pattern_name}",
-                    "target": target,
-                    "type": "calls",
-                    "attrs": {
-                        "confidence": match.confidence,
-                        "inferred": True,
-                        "method": "pattern",
-                        "pattern_name": match.pattern_name,
-                        "matched_text": match.matched_text,
-                        "line": match.line
+                relations.append(
+                    {
+                        "source": f"pattern:{match.pattern_name}",
+                        "target": target,
+                        "type": "calls",
+                        "attrs": {
+                            "confidence": match.confidence,
+                            "inferred": True,
+                            "method": "pattern",
+                            "pattern_name": match.pattern_name,
+                            "matched_text": match.matched_text,
+                            "line": match.line,
+                        },
                     }
-                })
+                )
 
         return relations
 
@@ -313,4 +287,3 @@ def detect_framework(code: str, file_path: str) -> str | None:
         return "flask"
 
     return None
-

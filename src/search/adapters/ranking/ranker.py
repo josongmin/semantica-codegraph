@@ -17,10 +17,7 @@ class Ranker:
     - 최종 정렬 및 필터링
     """
 
-    def __init__(
-        self,
-        feature_weights: dict[str, float] | None = None
-    ):
+    def __init__(self, feature_weights: dict[str, float] | None = None):
         """
         Args:
             feature_weights: 특성별 가중치
@@ -38,7 +35,7 @@ class Ranker:
                 "semantic_score": 0.5,
                 "graph_score": 0.2,
                 "recency_score": 0.0,  # 추후 구현
-                "popularity_score": 0.0  # 추후 구현
+                "popularity_score": 0.0,  # 추후 구현
             }
 
         self.feature_weights = feature_weights
@@ -69,11 +66,7 @@ class Ranker:
             candidate.features["final_score"] = final_score
 
         # 2. 점수 기준 정렬
-        ranked = sorted(
-            candidates,
-            key=lambda c: c.features.get("final_score", 0.0),
-            reverse=True
-        )
+        ranked = sorted(candidates, key=lambda c: c.features.get("final_score", 0.0), reverse=True)
 
         # 3. 상위 max_items개 반환
         result = ranked[:max_items]
@@ -102,4 +95,3 @@ class Ranker:
         """가중치 업데이트"""
         self.feature_weights.update(new_weights)
         logger.info(f"Updated weights: {self.feature_weights}")
-

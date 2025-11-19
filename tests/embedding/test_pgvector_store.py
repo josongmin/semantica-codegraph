@@ -7,10 +7,11 @@ import pytest
 def sample_vectors():
     """샘플 벡터 (384차원)"""
     import random
+
     return [
         [random.random() for _ in range(384)],
         [random.random() for _ in range(384)],
-        [random.random() for _ in range(384)]
+        [random.random() for _ in range(384)],
     ]
 
 
@@ -23,6 +24,7 @@ def sample_chunk_ids():
 def test_vector_dimension():
     """벡터 차원 테스트"""
     import random
+
     vector = [random.random() for _ in range(384)]
     assert len(vector) == 384
 
@@ -33,7 +35,9 @@ def test_save_embeddings(sample_chunk_ids, sample_vectors, ensure_test_repo):
     from src.core.models import CodeChunk
     from src.embedding.store_pgvector import PgVectorStore
 
-    conn_str = "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    conn_str = (
+        "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    )
 
     # 저장소 메타데이터 생성
     ensure_test_repo(conn_str)
@@ -49,7 +53,7 @@ def test_save_embeddings(sample_chunk_ids, sample_vectors, ensure_test_repo):
             span=(0, 0, 10, 0),
             language="python",
             text=f"chunk {chunk_id}",
-            attrs={}
+            attrs={},
         )
         for chunk_id in sample_chunk_ids
     ]
@@ -65,7 +69,9 @@ def test_vector_search(sample_chunk_ids, sample_vectors, ensure_test_repo):
     from src.core.models import CodeChunk
     from src.embedding.store_pgvector import PgVectorStore
 
-    conn_str = "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    conn_str = (
+        "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    )
 
     # 저장소 메타데이터 생성
     ensure_test_repo(conn_str)
@@ -81,7 +87,7 @@ def test_vector_search(sample_chunk_ids, sample_vectors, ensure_test_repo):
             span=(0, 0, 10, 0),
             language="python",
             text=f"chunk {chunk_id}",
-            attrs={}
+            attrs={},
         )
         for chunk_id in sample_chunk_ids
     ]
@@ -105,7 +111,9 @@ def test_vector_search_with_filters(sample_chunk_ids, sample_vectors, ensure_tes
     from src.core.models import CodeChunk
     from src.embedding.store_pgvector import PgVectorStore
 
-    conn_str = "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    conn_str = (
+        "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    )
 
     # 저장소 메타데이터 생성
     ensure_test_repo(conn_str)
@@ -121,7 +129,7 @@ def test_vector_search_with_filters(sample_chunk_ids, sample_vectors, ensure_tes
             span=(0, 0, 10, 0),
             language="python",
             text=f"chunk {chunk_id}",
-            attrs={}
+            attrs={},
         )
         for chunk_id in sample_chunk_ids
     ]
@@ -132,10 +140,7 @@ def test_vector_search_with_filters(sample_chunk_ids, sample_vectors, ensure_tes
 
     # 필터 적용
     results = store.search_by_vector(
-        "test-repo",
-        sample_vectors[0],
-        k=10,
-        filters={"language": "python"}
+        "test-repo", sample_vectors[0], k=10, filters={"language": "python"}
     )
 
     assert isinstance(results, list)
@@ -157,4 +162,3 @@ def test_chunk_ids_vectors_length_match():
     vectors = [[1.0] * 384]  # 길이 안 맞음
 
     assert len(chunk_ids) != len(vectors), "길이가 일치해야 함"
-

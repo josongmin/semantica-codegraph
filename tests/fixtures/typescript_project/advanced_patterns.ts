@@ -775,7 +775,3 @@ class SimpleContainer implements DependencyContainer {
     return factory();
   }
 }
-
-
-
-

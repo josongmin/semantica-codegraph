@@ -48,12 +48,9 @@ def test_parse_file_no_parser():
     pipeline._parser_cache = {}  # 파서 캐시 초기화
 
     file_meta = FileMetadata(
-        file_path="test.unknown",
-        abs_path="/path/test.unknown",
-        language="unknown"
+        file_path="test.unknown", abs_path="/path/test.unknown", language="unknown"
     )
 
     symbols, relations = pipeline._parse_file("test-repo", file_meta)
     assert symbols == []
     assert relations == []
-

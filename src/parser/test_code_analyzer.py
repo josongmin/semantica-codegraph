@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TestCall:
     """테스트에서 추출된 호출"""
+
     test_function: str  # 테스트 함수 이름
     called_symbol: str  # 호출된 심볼
     line: int
@@ -60,20 +61,19 @@ class TestCodeAnalyzer:
         file_path.lower()
         name_lower = Path(file_path).name.lower()
 
-        return any([
-            "tests" in path_parts,
-            "test" in path_parts,
-            name_lower.startswith("test_"),
-            name_lower.endswith("_test.py"),
-            "spec" in path_parts,
-            "specs" in path_parts,
-        ])
+        return any(
+            [
+                "tests" in path_parts,
+                "test" in path_parts,
+                name_lower.startswith("test_"),
+                name_lower.endswith("_test.py"),
+                "spec" in path_parts,
+                "specs" in path_parts,
+            ]
+        )
 
     def analyze(
-        self,
-        code: str,
-        file_path: str,
-        available_symbols: set[str] | None = None
+        self, code: str, file_path: str, available_symbols: set[str] | None = None
     ) -> list[TestCall]:
         """
         테스트 코드에서 호출 관계 추출
@@ -116,13 +116,11 @@ class TestCodeAnalyzer:
                             test_function=node.name,
                             called_symbol=call_str,
                             line=line,
-                            confidence=0.95
+                            confidence=0.95,
                         )
                     )
 
-        logger.debug(
-            f"Test analysis: {len(test_calls)} calls found in {file_path}"
-        )
+        logger.debug(f"Test analysis: {len(test_calls)} calls found in {file_path}")
 
         return test_calls
 
@@ -166,7 +164,7 @@ class TestCodeAnalyzer:
         for child in ast.walk(node):
             if isinstance(child, ast.Call):
                 call_str = self._get_call_string(child)
-                line = getattr(child, 'lineno', 0)
+                line = getattr(child, "lineno", 0)
 
                 if call_str:
                     calls.append((call_str, line))
@@ -209,12 +207,7 @@ class TestCodeAnalyzer:
             return f"{base}.{node.attr}" if base else node.attr
         return ""
 
-    def to_relations(
-        self,
-        test_calls: list[TestCall],
-        repo_id: str,
-        file_path: str
-    ) -> list[dict]:
+    def to_relations(self, test_calls: list[TestCall], repo_id: str, file_path: str) -> list[dict]:
         """
         테스트 호출을 RawRelation 형태로 변환
 
@@ -224,18 +217,19 @@ class TestCodeAnalyzer:
         relations = []
 
         for call in test_calls:
-            relations.append({
-                "source": f"test:{call.test_function}",
-                "target": call.called_symbol,
-                "type": "calls",
-                "attrs": {
-                    "confidence": call.confidence,
-                    "inferred": True,
-                    "method": "test_analysis",
-                    "test_function": call.test_function,
-                    "line": call.line
+            relations.append(
+                {
+                    "source": f"test:{call.test_function}",
+                    "target": call.called_symbol,
+                    "type": "calls",
+                    "attrs": {
+                        "confidence": call.confidence,
+                        "inferred": True,
+                        "method": "test_analysis",
+                        "test_function": call.test_function,
+                        "line": call.line,
+                    },
                 }
-            })
+            )
 
         return relations
-

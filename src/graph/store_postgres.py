@@ -26,12 +26,7 @@ class PostgresGraphStore(GraphStorePort):
     - (repo_id, file_path, line): 위치 기반 조회
     """
 
-    def __init__(
-        self,
-        connection_string: str,
-        pool_size: int = 10,
-        pool_max: int = 20
-    ):
+    def __init__(self, connection_string: str, pool_size: int = 10, pool_max: int = 20):
         """
         Args:
             connection_string: PostgreSQL 연결 문자열
@@ -42,11 +37,7 @@ class PostgresGraphStore(GraphStorePort):
         self.connection_string = connection_string
 
         # 커넥션 풀 생성
-        self._pool = pool.SimpleConnectionPool(
-            pool_size,
-            pool_max,
-            connection_string
-        )
+        self._pool = pool.SimpleConnectionPool(pool_size, pool_max, connection_string)
         logger.info(f"Created connection pool: min={pool_size}, max={pool_max}")
 
         self._ensure_tables()
@@ -79,17 +70,20 @@ class PostgresGraphStore(GraphStorePort):
                 # 여기서는 기본 테이블만 생성
 
                 # repo_metadata (최소)
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS repo_metadata (
                         repo_id TEXT PRIMARY KEY,
                         name TEXT NOT NULL,
                         root_path TEXT NOT NULL,
                         created_at TIMESTAMP DEFAULT NOW()
                     )
-                """)
+                """
+                )
 
                 # code_nodes
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS code_nodes (
                         repo_id TEXT NOT NULL,
                         id TEXT NOT NULL,
@@ -106,10 +100,12 @@ class PostgresGraphStore(GraphStorePort):
                         created_at TIMESTAMP DEFAULT NOW(),
                         PRIMARY KEY (repo_id, id)
                     )
-                """)
+                """
+                )
 
                 # code_edges
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS code_edges (
                         repo_id TEXT NOT NULL,
                         src_id TEXT NOT NULL,
@@ -119,33 +115,44 @@ class PostgresGraphStore(GraphStorePort):
                         created_at TIMESTAMP DEFAULT NOW(),
                         PRIMARY KEY (repo_id, src_id, dst_id, type)
                     )
-                """)
+                """
+                )
 
                 # 인덱스
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_nodes_file_path
                     ON code_nodes(repo_id, file_path)
-                """)
+                """
+                )
 
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_nodes_location
                     ON code_nodes(repo_id, file_path, span_start_line, span_end_line)
-                """)
+                """
+                )
 
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_nodes_name
                     ON code_nodes(repo_id, name)
-                """)
+                """
+                )
 
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_edges_src
                     ON code_edges(repo_id, src_id)
-                """)
+                """
+                )
 
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_edges_dst
                     ON code_edges(repo_id, dst_id)
-                """)
+                """
+                )
 
                 conn.commit()
         finally:
@@ -182,7 +189,7 @@ class PostgresGraphStore(GraphStorePort):
                         node.span[3],  # end_col
                         node.name,
                         node.text,
-                        json.dumps(node.attrs)
+                        json.dumps(node.attrs),
                     )
                     for node in nodes
                 ]
@@ -208,7 +215,7 @@ class PostgresGraphStore(GraphStorePort):
                         attrs = EXCLUDED.attrs
                     """,
                     node_data,
-                    page_size=500  # 배치 크기 최적화
+                    page_size=500,  # 배치 크기 최적화
                 )
 
                 logger.debug(f"Saved {len(nodes)} nodes")
@@ -216,13 +223,7 @@ class PostgresGraphStore(GraphStorePort):
                 # 엣지 저장 (배치)
                 if edges:
                     edge_data = [
-                        (
-                            edge.repo_id,
-                            edge.src_id,
-                            edge.dst_id,
-                            edge.type,
-                            json.dumps(edge.attrs)
-                        )
+                        (edge.repo_id, edge.src_id, edge.dst_id, edge.type, json.dumps(edge.attrs))
                         for edge in edges
                     ]
 
@@ -236,7 +237,7 @@ class PostgresGraphStore(GraphStorePort):
                             attrs = EXCLUDED.attrs
                         """,
                         edge_data,
-                        page_size=500  # 배치 크기 최적화
+                        page_size=500,  # 배치 크기 최적화
                     )
 
                     logger.debug(f"Saved {len(edges)} edges")
@@ -260,7 +261,7 @@ class PostgresGraphStore(GraphStorePort):
                     FROM code_nodes
                     WHERE repo_id = %s AND id = %s
                     """,
-                    (repo_id, node_id)
+                    (repo_id, node_id),
                 )
 
                 row = cur.fetchone()
@@ -297,7 +298,7 @@ class PostgresGraphStore(GraphStorePort):
                         (span_end_col - span_start_col) ASC
                     LIMIT 1
                     """,
-                    (repo_id, file_path, line, line)
+                    (repo_id, file_path, line, line),
                 )
 
                 row = cur.fetchone()
@@ -351,7 +352,7 @@ class PostgresGraphStore(GraphStorePort):
                               AND src_id = ANY(%s)
                               AND type = ANY(%s)
                             """,
-                            (repo_id, current_nodes, edge_types)
+                            (repo_id, current_nodes, edge_types),
                         )
                     else:
                         cur.execute(
@@ -359,7 +360,7 @@ class PostgresGraphStore(GraphStorePort):
                             SELECT dst_id FROM code_edges
                             WHERE repo_id = %s AND src_id = ANY(%s)
                             """,
-                            (repo_id, current_nodes)
+                            (repo_id, current_nodes),
                         )
 
                     next_nodes = []
@@ -385,7 +386,7 @@ class PostgresGraphStore(GraphStorePort):
                             FROM code_nodes
                             WHERE repo_id = %s AND id = ANY(%s)
                             """,
-                            (repo_id, neighbor_ids)
+                            (repo_id, neighbor_ids),
                         )
 
                         neighbors = [self._row_to_node(row) for row in cur.fetchall()]
@@ -394,7 +395,7 @@ class PostgresGraphStore(GraphStorePort):
 
         logger.debug(f"Found {len(neighbors)} neighbors for {node_id} ({k}-hop)")
         return neighbors
-    
+
     def neighbors_with_edges(
         self,
         repo_id: RepoId,
@@ -404,31 +405,31 @@ class PostgresGraphStore(GraphStorePort):
     ) -> list[tuple[CodeNode, str, int]]:
         """
         이웃 노드를 edge 정보와 함께 조회 (k-hop)
-        
+
         Args:
             repo_id: 저장소 ID
             node_id: 시작 노드 ID
             edge_types: 필터할 엣지 타입 (None이면 전체)
             k: hop 수
-        
+
         Returns:
             (CodeNode, edge_type, depth) 튜플 리스트
         """
         if k <= 0:
             return []
-        
+
         neighbors_info = []  # [(node_id, edge_type, depth)]
         visited = {node_id}
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
                 current_nodes = [node_id]
-                
+
                 for depth in range(1, k + 1):
                     if not current_nodes:
                         break
-                    
+
                     # Edge 정보와 함께 다음 노드 조회
                     if edge_types:
                         cur.execute(
@@ -438,7 +439,7 @@ class PostgresGraphStore(GraphStorePort):
                               AND src_id = ANY(%s)
                               AND type = ANY(%s)
                             """,
-                            (repo_id, current_nodes, edge_types)
+                            (repo_id, current_nodes, edge_types),
                         )
                     else:
                         cur.execute(
@@ -446,9 +447,9 @@ class PostgresGraphStore(GraphStorePort):
                             SELECT dst_id, type FROM code_edges
                             WHERE repo_id = %s AND src_id = ANY(%s)
                             """,
-                            (repo_id, current_nodes)
+                            (repo_id, current_nodes),
                         )
-                    
+
                     next_nodes = []
                     for row in cur.fetchall():
                         dst_id, edge_type = row
@@ -456,13 +457,13 @@ class PostgresGraphStore(GraphStorePort):
                             visited.add(dst_id)
                             next_nodes.append(dst_id)
                             neighbors_info.append((dst_id, edge_type, depth))
-                    
+
                     current_nodes = next_nodes
-                
+
                 # 모든 이웃 노드 조회 (배치)
                 if neighbors_info:
                     neighbor_ids = [n[0] for n in neighbors_info]
-                    
+
                     cur.execute(
                         """
                         SELECT repo_id, id, kind, language, file_path,
@@ -471,27 +472,29 @@ class PostgresGraphStore(GraphStorePort):
                         FROM code_nodes
                         WHERE repo_id = %s AND id = ANY(%s)
                         """,
-                        (repo_id, neighbor_ids)
+                        (repo_id, neighbor_ids),
                     )
-                    
+
                     # node_id -> CodeNode 매핑
                     nodes_map = {}
                     for row in cur.fetchall():
                         node = self._row_to_node(row)
                         nodes_map[node.id] = node
-                    
+
                     # 결과 조합
                     result = []
                     for node_id, edge_type, depth in neighbors_info:
                         if node_id in nodes_map:
                             result.append((nodes_map[node_id], edge_type, depth))
-                    
-                    logger.debug(f"Found {len(result)} neighbors with edges for {node_id} ({k}-hop)")
+
+                    logger.debug(
+                        f"Found {len(result)} neighbors with edges for {node_id} ({k}-hop)"
+                    )
                     return result
-        
+
         finally:
             self._put_connection(conn)
-        
+
         return []
 
     def list_nodes(
@@ -522,7 +525,7 @@ class PostgresGraphStore(GraphStorePort):
                         WHERE repo_id = %s AND kind = ANY(%s)
                         ORDER BY file_path, span_start_line
                         """,
-                        (repo_id, kinds)
+                        (repo_id, kinds),
                     )
                 else:
                     cur.execute(
@@ -534,7 +537,7 @@ class PostgresGraphStore(GraphStorePort):
                         WHERE repo_id = %s
                         ORDER BY file_path, span_start_line
                         """,
-                        (repo_id,)
+                        (repo_id,),
                     )
 
                 rows = cur.fetchall()
@@ -560,9 +563,7 @@ class PostgresGraphStore(GraphStorePort):
         finally:
             self._put_connection(conn)
 
-        logger.info(
-            f"Deleted repo {repo_id}: {nodes_deleted} nodes, {edges_deleted} edges"
-        )
+        logger.info(f"Deleted repo {repo_id}: {nodes_deleted} nodes, {edges_deleted} edges")
 
     def _row_to_node(self, row) -> CodeNode:
         """DB row → CodeNode 변환"""
@@ -575,6 +576,150 @@ class PostgresGraphStore(GraphStorePort):
             span=(row[5], row[6], row[7], row[8]),
             name=row[9],
             text=row[10],
-            attrs=row[11] if row[11] else {}
+            attrs=row[11] if row[11] else {},
         )
-
+    
+    # ===== Graph Ranking =====
+    
+    def calculate_node_importance(self, repo_id: RepoId, node_id: str) -> float:
+        """
+        노드 중요도 점수 계산 (PageRank 스타일)
+        
+        Args:
+            repo_id: 저장소 ID
+            node_id: 노드 ID
+        
+        Returns:
+            중요도 점수 (0.0 ~ 1.0)
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                # In-degree (얼마나 많이 호출/참조되는가)
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM code_edges
+                    WHERE repo_id = %s AND dst_id = %s
+                    """,
+                    (repo_id, node_id),
+                )
+                in_degree = cur.fetchone()[0]
+                
+                # Out-degree (얼마나 많이 호출/참조하는가)
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM code_edges
+                    WHERE repo_id = %s AND src_id = %s
+                    """,
+                    (repo_id, node_id),
+                )
+                out_degree = cur.fetchone()[0]
+                
+                # 전체 노드 수
+                cur.execute(
+                    "SELECT COUNT(*) FROM code_nodes WHERE repo_id = %s",
+                    (repo_id,),
+                )
+                total_nodes = cur.fetchone()[0]
+                
+                if total_nodes == 0:
+                    return 0.0
+                
+                # Hub score: (in + out) / total_nodes
+                # 0~1 범위로 정규화
+                hub_score = (in_degree + out_degree) / (2 * total_nodes)
+                
+                # In-degree 가중치 (호출되는 것이 더 중요)
+                importance = (in_degree * 0.7 + out_degree * 0.3) / max(total_nodes * 0.1, 1)
+                
+                # 0~1 범위로 클리핑
+                return min(importance, 1.0)
+        finally:
+            self._put_connection(conn)
+    
+    def update_all_node_importance(self, repo_id: RepoId, batch_size: int = 100) -> int:
+        """
+        저장소의 모든 노드 중요도 계산 및 업데이트
+        
+        Args:
+            repo_id: 저장소 ID
+            batch_size: 배치 크기
+        
+        Returns:
+            업데이트된 노드 수
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                # 모든 노드 ID 가져오기
+                cur.execute(
+                    "SELECT id FROM code_nodes WHERE repo_id = %s",
+                    (repo_id,),
+                )
+                node_ids = [row[0] for row in cur.fetchall()]
+                
+                logger.info(f"Calculating importance for {len(node_ids)} nodes...")
+                
+                # 배치로 업데이트
+                updates = []
+                for i, node_id in enumerate(node_ids):
+                    importance = self.calculate_node_importance(repo_id, node_id)
+                    updates.append((importance, repo_id, node_id))
+                    
+                    # 배치 실행
+                    if len(updates) >= batch_size or i == len(node_ids) - 1:
+                        execute_batch(
+                            cur,
+                            """
+                            UPDATE code_nodes
+                            SET importance_score = %s
+                            WHERE repo_id = %s AND id = %s
+                            """,
+                            updates,
+                            page_size=batch_size,
+                        )
+                        conn.commit()
+                        
+                        logger.info(f"Updated importance for {len(updates)} nodes ({i+1}/{len(node_ids)})")
+                        updates = []
+                
+                return len(node_ids)
+        finally:
+            self._put_connection(conn)
+    
+    def get_top_important_nodes(self, repo_id: RepoId, k: int = 20) -> list[tuple[CodeNode, float]]:
+        """
+        중요도 높은 노드 조회
+        
+        Args:
+            repo_id: 저장소 ID
+            k: 반환할 노드 수
+        
+        Returns:
+            (CodeNode, importance_score) 리스트
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT repo_id, id, kind, language, file_path,
+                           span_start_line, span_start_col, span_end_line, span_end_col,
+                           name, text, attrs, importance_score
+                    FROM code_nodes
+                    WHERE repo_id = %s AND importance_score > 0
+                    ORDER BY importance_score DESC
+                    LIMIT %s
+                    """,
+                    (repo_id, k),
+                )
+                
+                results = []
+                for row in cur.fetchall():
+                    node = self._row_to_node(row[:12])
+                    importance = row[12]
+                    results.append((node, importance))
+                
+                return results
+        finally:
+            self._put_connection(conn)

@@ -18,7 +18,7 @@ def sample_chunks():
             span=(10, 0, 20, 0),
             language="python",
             text="def foo():\n    return 42",
-            attrs={"node_kind": "Function"}
+            attrs={"node_kind": "Function"},
         ),
         CodeChunk(
             repo_id="test-repo",
@@ -28,7 +28,7 @@ def sample_chunks():
             span=(25, 0, 40, 0),
             language="python",
             text="class Bar:\n    pass",
-            attrs={"node_kind": "Class"}
+            attrs={"node_kind": "Class"},
         ),
         CodeChunk(
             repo_id="test-repo",
@@ -38,8 +38,8 @@ def sample_chunks():
             span=(5, 0, 10, 0),
             language="python",
             text="def helper(x):\n    return x * 2",
-            attrs={}
-        )
+            attrs={},
+        ),
     ]
 
 
@@ -51,7 +51,9 @@ def test_chunk_store_initialization():
 
 def test_save_chunks(sample_chunks, ensure_test_repo):
     """청크 저장 테스트"""
-    conn_str = "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    conn_str = (
+        "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    )
 
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(conn_str)
@@ -67,7 +69,9 @@ def test_save_chunks(sample_chunks, ensure_test_repo):
 
 def test_find_by_location(sample_chunks, ensure_test_repo):
     """위치로 청크 조회 (Zoekt 매핑 테스트)"""
-    conn_str = "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    conn_str = (
+        "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    )
 
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(conn_str)
@@ -93,7 +97,9 @@ def test_find_by_location(sample_chunks, ensure_test_repo):
 
 def test_get_chunks_by_node(sample_chunks, ensure_test_repo):
     """노드로 청크 조회 테스트"""
-    conn_str = "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    conn_str = (
+        "host=localhost port=7711 dbname=semantica_codegraph user=semantica password=semantica"
+    )
 
     # 저장소 메타데이터 먼저 생성
     ensure_test_repo(conn_str)
@@ -114,10 +120,13 @@ def test_row_to_chunk_conversion():
         "chunk-1",
         "test-repo:main.py:Function:foo",
         "main.py",
-        10, 0, 20, 0,  # span
+        10,
+        0,
+        20,
+        0,  # span
         "python",
         "def foo():\n    return 42",
-        {"node_kind": "Function"}
+        {"node_kind": "Function"},
     )
 
     # Store 인스턴스 없이 변환 로직만 테스트
@@ -129,11 +138,10 @@ def test_row_to_chunk_conversion():
         span=(row[4], row[5], row[6], row[7]),
         language=row[8],
         text=row[9],
-        attrs=row[10]
+        attrs=row[10],
     )
 
     assert chunk.repo_id == "test-repo"
     assert chunk.id == "chunk-1"
     assert chunk.span == (10, 0, 20, 0)
     assert chunk.attrs.get("node_kind") == "Function"
-

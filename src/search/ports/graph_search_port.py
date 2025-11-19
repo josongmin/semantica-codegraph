@@ -31,7 +31,7 @@ class GraphSearchPort(Protocol):
     ) -> list[CodeNode]:
         """노드 이웃 확장 (k-hop)"""
         ...
-    
+
     def expand_neighbors_with_edges(
         self,
         repo_id: RepoId,
@@ -41,9 +41,8 @@ class GraphSearchPort(Protocol):
     ) -> list[tuple[CodeNode, str, int]]:
         """
         노드 이웃을 edge 정보와 함께 확장 (k-hop)
-        
+
         Returns:
             (CodeNode, edge_type, depth) 튜플 리스트
         """
         ...
-

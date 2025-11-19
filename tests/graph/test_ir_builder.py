@@ -17,7 +17,7 @@ def sample_symbols():
             kind="Class",
             name="User",
             span=(0, 0, 5, 12),  # 0번 라인부터 5번 라인 12컬럼까지
-            attrs={"docstring": "User class"}
+            attrs={"docstring": "User class"},
         ),
         RawSymbol(
             repo_id="test-repo",
@@ -26,7 +26,7 @@ def sample_symbols():
             kind="Method",
             name="User.save",
             span=(4, 4, 5, 12),  # 4번 라인 4컬럼부터
-            attrs={"parent_class": "User"}
+            attrs={"parent_class": "User"},
         ),
         RawSymbol(
             repo_id="test-repo",
@@ -35,8 +35,8 @@ def sample_symbols():
             kind="Function",
             name="calculate",
             span=(8, 0, 9, 16),  # 8번 라인부터
-            attrs={}
-        )
+            attrs={},
+        ),
     ]
 
 
@@ -50,8 +50,8 @@ def sample_relations():
             language="python",
             type="defines",
             src_span=(0, 0, 5, 12),  # User class
-            dst_span=(4, 4, 5, 12),   # User.save method
-            attrs={"target": "User.save"}
+            dst_span=(4, 4, 5, 12),  # User.save method
+            attrs={"target": "User.save"},
         )
     ]
 
@@ -157,7 +157,7 @@ def test_invalid_edge_removal(sample_symbols):
         type="calls",
         src_span=(1, 0, 10, 0),
         dst_span=(999, 0, 999, 0),  # 존재하지 않는 위치
-        attrs={}
+        attrs={},
     )
 
     builder = IRBuilder()
@@ -175,4 +175,3 @@ def test_build_without_source_code(sample_symbols):
     assert len(nodes) == 3
     # text는 빈 문자열이어야 함
     assert all(node.text == "" for node in nodes)
-

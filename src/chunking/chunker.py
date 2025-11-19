@@ -6,6 +6,17 @@ from ..core.models import CodeChunk, CodeNode
 
 logger = logging.getLogger(__name__)
 
+# tiktoken 초기화 (임베딩 모델용)
+try:
+    import tiktoken
+
+    # 대부분의 임베딩 모델에서 사용하는 cl100k_base 인코딩
+    TIKTOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
+    logger.warning("tiktoken not available, falling back to simple token estimation")
+
 
 class Chunker:
     """
@@ -24,6 +35,7 @@ class Chunker:
         min_lines: int = 3,
         overlap_lines: int = 5,
         strategy: str = "node_based",
+        max_tokens: int | None = 7000,  # 임베딩 API 제한보다 낮게 설정 (안전 마진)
     ):
         """
         Args:
@@ -34,11 +46,14 @@ class Chunker:
                 - "node_based": 1 Node = 1 Chunk (기본)
                 - "size_based": 크기 기반 분할
                 - "hierarchical": 계층적 (Class + 각 Method)
+            max_tokens: 청크 최대 토큰 수 (None이면 토큰 제한 없음)
+                - 기본값 7000은 대부분의 임베딩 모델의 8K 제한보다 낮게 설정 (안전 마진)
         """
         self.max_lines = max_lines
         self.min_lines = min_lines
         self.overlap_lines = overlap_lines
         self.strategy = strategy
+        self.max_tokens = max_tokens
 
     def chunk(self, nodes: list[CodeNode]) -> list[CodeChunk]:
         """
@@ -83,9 +98,16 @@ class Chunker:
             if node.kind == "File":
                 continue
 
-            # 기본 청크 생성
-            chunk = self._node_to_chunk(node)
-            chunks.append(chunk)
+            # 토큰 수 검증
+            if self.max_tokens and self._count_tokens(node.text) > self.max_tokens:
+                # 토큰 수 초과 시 분할
+                logger.debug(f"Node {node.name} exceeds max_tokens, splitting into chunks")
+                split_chunks = self._split_node_by_tokens(node)
+                chunks.extend(split_chunks)
+            else:
+                # 기본 청크 생성
+                chunk = self._node_to_chunk(node)
+                chunks.append(chunk)
 
         return chunks
 
@@ -266,12 +288,109 @@ class Chunker:
         start_line, _, end_line, _ = node.span
         return int(end_line - start_line + 1)
 
+    def _count_tokens(self, text: str) -> int:
+        """
+        정확한 토큰 수 계산 (tiktoken 사용)
+
+        tiktoken이 없으면 간단한 추정 사용
+
+        Args:
+            text: 텍스트
+
+        Returns:
+            토큰 수
+        """
+        if TIKTOKEN_AVAILABLE:
+            try:
+                tokens = TIKTOKEN_ENCODING.encode(text)
+                return len(tokens)
+            except Exception as e:
+                logger.warning(f"tiktoken encoding failed: {e}, using fallback")
+
+        # Fallback: 간단한 추정 (1토큰 ≈ 4글자)
+        return len(text) // 4
+
+    def _split_node_by_tokens(self, node: CodeNode) -> list[CodeChunk]:
+        """
+        토큰 수 기준으로 노드를 여러 청크로 분할
+
+        Args:
+            node: 큰 CodeNode
+
+        Returns:
+            분할된 CodeChunk 리스트
+        """
+        if not self.max_tokens:
+            # max_tokens이 없으면 라인 기반 분할 사용
+            return self._split_node(node)
+
+        chunks = []
+        lines = node.text.split("\n")
+        total_lines = len(lines)
+
+        start_line_offset = node.span[0]
+        chunk_idx = 0
+
+        current_pos = 0
+        while current_pos < total_lines:
+            # 토큰 제한 내에서 최대한 많은 라인 포함
+            end_pos = current_pos + 1
+            chunk_lines = lines[current_pos:end_pos]
+            chunk_text = "\n".join(chunk_lines)
+
+            # 토큰 수 확인하며 라인 추가
+            while end_pos < total_lines:
+                next_end = end_pos + 1
+                next_chunk_lines = lines[current_pos:next_end]
+                next_chunk_text = "\n".join(next_chunk_lines)
+
+                if self._count_tokens(next_chunk_text) > self.max_tokens:
+                    break
+
+                end_pos = next_end
+                chunk_lines = next_chunk_lines
+                chunk_text = next_chunk_text
+
+            # 청크 span 계산
+            chunk_span = (
+                start_line_offset + current_pos,
+                0,
+                start_line_offset + end_pos - 1,
+                len(chunk_lines[-1]) if chunk_lines else 0,
+            )
+
+            # 청크 생성
+            chunk_id = f"{node.id}:chunk{chunk_idx}"
+            token_count = self._count_tokens(chunk_text)
+            chunks.append(
+                CodeChunk(
+                    repo_id=node.repo_id,
+                    id=chunk_id,
+                    node_id=node.id,
+                    file_path=node.file_path,
+                    span=chunk_span,
+                    language=node.language,
+                    text=chunk_text,
+                    attrs={
+                        "node_kind": node.kind,
+                        "node_name": node.name,
+                        "chunk_index": chunk_idx,
+                        "is_split": True,
+                        "token_count": token_count,
+                    },
+                )
+            )
+
+            # 오버랩 고려 (라인 기반)
+            current_pos = end_pos - self.overlap_lines if end_pos < total_lines else end_pos
+            chunk_idx += 1
+
+        logger.debug(f"Split node {node.name} into {len(chunks)} token-based chunks")
+        return chunks
+
     def _estimate_token_count(self, text: str) -> int:
         """
-        토큰 수 추정 (간단한 휴리스틱)
-
-        실제 토큰화는 tiktoken 등 사용 권장
-        여기서는 단어 수 * 1.3으로 추정
+        토큰 수 추정 (간단한 휴리스틱) - 하위 호환성을 위해 유지
 
         Args:
             text: 텍스트
@@ -279,5 +398,4 @@ class Chunker:
         Returns:
             추정 토큰 수
         """
-        words = text.split()
-        return int(len(words) * 1.3)
+        return self._count_tokens(text)

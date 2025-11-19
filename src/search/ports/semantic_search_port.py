@@ -38,4 +38,3 @@ class SemanticSearchPort(Protocol):
     def delete_repo_index(self, repo_id: RepoId) -> None:
         """저장소 인덱스 삭제"""
         ...
-

@@ -18,9 +18,9 @@ from typing import (
 )
 
 # 복잡한 타입 별칭
-T = TypeVar('T')
-K = TypeVar('K')
-V = TypeVar('V')
+T = TypeVar("T")
+K = TypeVar("K")
+V = TypeVar("V")
 
 NestedDict = dict[str, str | int | dict[str, Any] | list[Any]]
 ComplexType = Union[list[dict[str, int | str | None]], dict[str, list[int]]]
@@ -54,6 +54,7 @@ class Status(Enum):
 # 메타클래스
 class SingletonMeta(type):
     """싱글톤 메타클래스"""
+
     _instances: dict[type, Any] = {}
 
     def __call__(cls, *args, **kwargs):
@@ -108,13 +109,16 @@ class Calculator:
     """오버로드를 사용하는 계산기"""
 
     @overload
-    def add(self, x: int, y: int) -> int: ...
+    def add(self, x: int, y: int) -> int:
+        ...
 
     @overload
-    def add(self, x: str, y: str) -> str: ...
+    def add(self, x: str, y: str) -> str:
+        ...
 
     @overload
-    def add(self, x: list[int], y: list[int]) -> list[int]: ...
+    def add(self, x: list[int], y: list[int]) -> list[int]:
+        ...
 
     def add(self, x: int | str | list[int], y: int | str | list[int]) -> int | str | list[int]:
         """타입에 따라 다른 덧셈 수행"""
@@ -128,6 +132,7 @@ class Calculator:
 # 복잡한 데코레이터 체이닝
 def validate_input(validator: Callable[[Any], bool]):
     """입력 검증 데코레이터"""
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -135,23 +140,28 @@ def validate_input(validator: Callable[[Any], bool]):
                 if not validator(arg):
                     raise ValueError(f"Invalid input: {arg}")
             return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 def log_execution(func: Callable) -> Callable:
     """실행 로깅 데코레이터"""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         print(f"Executing {func.__name__} with args={args}, kwargs={kwargs}")
         result = func(*args, **kwargs)
         print(f"Result: {result}")
         return result
+
     return wrapper
 
 
 def retry_on_failure(max_retries: int = 3):
     """실패 시 재시도 데코레이터"""
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
@@ -176,9 +186,11 @@ def retry_on_failure(max_retries: int = 3):
             return None
 
         import asyncio
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
+
     return decorator
 
 
@@ -228,11 +240,13 @@ class CustomError(Exception):
 
 class ValidationError(CustomError):
     """검증 에러"""
+
     pass
 
 
 class ProcessingError(CustomError):
     """처리 에러"""
+
     pass
 
 
@@ -259,11 +273,13 @@ def create_filter_function(threshold: int) -> Callable[[list[int]], list[int]]:
 
 def compose(*functions: Callable) -> Callable:
     """함수 합성"""
+
     def composed(x: Any) -> Any:
         result = x
         for func in reversed(functions):
             result = func(result)
         return result
+
     return composed
 
 
@@ -303,16 +319,19 @@ class ResourceManager:
 class Drawable(Protocol):
     """그리기 가능한 프로토콜"""
 
-    def draw(self) -> None: ...
+    def draw(self) -> None:
+        ...
 
-    def get_area(self) -> float: ...
+    def get_area(self) -> float:
+        ...
 
 
 @runtime_checkable
 class Movable(Protocol):
     """이동 가능한 프로토콜"""
 
-    def move(self, x: float, y: float) -> None: ...
+    def move(self, x: float, y: float) -> None:
+        ...
 
 
 class Shape:
@@ -337,7 +356,7 @@ class Circle(Shape):
         self.radius = radius
 
     def get_area(self) -> float:
-        return 3.14159 * self.radius ** 2
+        return 3.14159 * self.radius**2
 
     def move(self, x: float, y: float) -> None:
         self.x += x
@@ -371,17 +390,20 @@ class OuterClass:
 # 이상한 네이밍 패턴
 class _PrivateClass:
     """프라이빗 클래스 (언더스코어로 시작)"""
+
     pass
 
 
 class __DunderClass__:
     """던더 클래스"""
+
     def __init__(self):
         self.__private_attr = "secret"
 
 
 class CamelCaseClass:
     """카멜케이스 클래스"""
+
     def mixedCaseMethod(self) -> None:
         """혼합 케이스 메서드"""
         pass
@@ -389,6 +411,7 @@ class CamelCaseClass:
 
 class snake_case_class:
     """스네이크 케이스 클래스"""
+
     def method_name(self) -> None:
         pass
 
@@ -495,11 +518,11 @@ def handle_user_deleted(user_id: str) -> None:
 def is_valid_user(obj: Any) -> bool:
     """타입 가드 함수"""
     return (
-        isinstance(obj, dict) and
-        "name" in obj and
-        "age" in obj and
-        isinstance(obj["name"], str) and
-        isinstance(obj["age"], int)
+        isinstance(obj, dict)
+        and "name" in obj
+        and "age" in obj
+        and isinstance(obj["name"], str)
+        and isinstance(obj["age"], int)
     )
 
 
@@ -562,11 +585,7 @@ def process_data(data: str | int | list[int]) -> str | int | list[int]:
 # Literal 타입 사용
 def get_status_color(status: Literal["success", "error", "warning"]) -> str:
     """상태에 따른 색상 반환"""
-    colors = {
-        "success": "green",
-        "error": "red",
-        "warning": "yellow"
-    }
+    colors = {"success": "green", "error": "red", "warning": "yellow"}
     return colors[status]
 
 
@@ -576,7 +595,7 @@ def complex_function_signature(
     optional: int | None = None,
     *args: str,
     keyword_only: bool = False,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> dict[str, Any]:
     """복잡한 함수 시그니처"""
     return {
@@ -584,6 +603,5 @@ def complex_function_signature(
         "optional": optional,
         "args": args,
         "keyword_only": keyword_only,
-        "kwargs": kwargs
+        "kwargs": kwargs,
     }
-

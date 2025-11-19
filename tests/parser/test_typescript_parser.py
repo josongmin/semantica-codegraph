@@ -20,7 +20,7 @@ def file_meta(sample_ts_file):
         "repo_id": "test-repo",
         "path": "sample_typescript.ts",
         "abs_path": str(sample_ts_file),
-        "language": "typescript"
+        "language": "typescript",
     }
 
 
@@ -150,4 +150,3 @@ def test_implements_relation(file_meta):
 
     implements = user_repo.attrs.get("implements", [])
     assert len(implements) > 0
-

@@ -22,12 +22,7 @@ class PostgresChunkStore(ChunkStorePort):
     - Node 기반 조회
     """
 
-    def __init__(
-        self,
-        connection_string: str,
-        pool_size: int = 5,
-        pool_max: int = 10
-    ):
+    def __init__(self, connection_string: str, pool_size: int = 2, pool_max: int = 4):
         """
         Args:
             connection_string: PostgreSQL 연결 문자열
@@ -37,11 +32,7 @@ class PostgresChunkStore(ChunkStorePort):
         self.connection_string = connection_string
 
         # 커넥션 풀 생성
-        self._pool = pool.SimpleConnectionPool(
-            pool_size,
-            pool_max,
-            connection_string
-        )
+        self._pool = pool.SimpleConnectionPool(pool_size, pool_max, connection_string)
         logger.info(f"ChunkStore: Created connection pool (min={pool_size}, max={pool_max})")
 
         self._ensure_tables()
@@ -65,7 +56,8 @@ class PostgresChunkStore(ChunkStorePort):
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS code_chunks (
                         repo_id TEXT NOT NULL,
                         chunk_id TEXT NOT NULL,
@@ -82,18 +74,23 @@ class PostgresChunkStore(ChunkStorePort):
                         created_at TIMESTAMP DEFAULT NOW(),
                         PRIMARY KEY (repo_id, chunk_id)
                     )
-                """)
+                """
+                )
 
                 # Zoekt 매핑에 필수!
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_chunks_location
                     ON code_chunks(repo_id, file_path, span_start_line, span_end_line)
-                """)
+                """
+                )
 
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_chunks_node
                     ON code_chunks(repo_id, node_id)
-                """)
+                """
+                )
 
                 conn.commit()
         finally:
@@ -122,7 +119,7 @@ class PostgresChunkStore(ChunkStorePort):
                         chunk.span[3],
                         chunk.language,
                         chunk.text,
-                        json.dumps(chunk.attrs)
+                        json.dumps(chunk.attrs),
                     )
                     for chunk in chunks
                 ]
@@ -147,7 +144,7 @@ class PostgresChunkStore(ChunkStorePort):
                         attrs = EXCLUDED.attrs
                     """,
                     chunk_data,
-                    page_size=500  # 배치 크기 최적화
+                    page_size=500,  # 배치 크기 최적화
                 )
 
                 conn.commit()
@@ -169,7 +166,7 @@ class PostgresChunkStore(ChunkStorePort):
                     FROM code_chunks
                     WHERE repo_id = %s AND chunk_id = %s
                     """,
-                    (repo_id, chunk_id)
+                    (repo_id, chunk_id),
                 )
 
                 row = cur.fetchone()
@@ -197,19 +194,14 @@ class PostgresChunkStore(ChunkStorePort):
                     FROM code_chunks
                     WHERE repo_id = %s AND node_id = %s
                     """,
-                    (repo_id, node_id)
+                    (repo_id, node_id),
                 )
 
                 return [self._row_to_chunk(row) for row in cur.fetchall()]
         finally:
             self._put_connection(conn)
 
-    def find_by_location(
-        self,
-        repo_id: RepoId,
-        file_path: str,
-        line: int
-    ) -> CodeChunk | None:
+    def find_by_location(self, repo_id: RepoId, file_path: str, line: int) -> CodeChunk | None:
         """
         위치로 청크 조회 (Zoekt 매핑에 필수!)
 
@@ -239,7 +231,7 @@ class PostgresChunkStore(ChunkStorePort):
                         (span_end_col - span_start_col) ASC
                     LIMIT 1
                     """,
-                    (repo_id, file_path, line, line)
+                    (repo_id, file_path, line, line),
                 )
 
                 row = cur.fetchone()
@@ -260,6 +252,80 @@ class PostgresChunkStore(ChunkStorePort):
             span=(row[4], row[5], row[6], row[7]),
             language=row[8],
             text=row[9],
-            attrs=row[10] if row[10] else {}
+            attrs=row[10] if row[10] else {},
         )
-
+    
+    # ===== Chunk Metadata 관리 =====
+    
+    def update_chunk_metadata(self, repo_id: RepoId, chunk_id: str, metadata: dict) -> None:
+        """
+        청크 메타데이터 업데이트
+        
+        Args:
+            repo_id: 저장소 ID
+            chunk_id: 청크 ID
+            metadata: 메타데이터 dict
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE code_chunks
+                    SET metadata = %s
+                    WHERE repo_id = %s AND chunk_id = %s
+                    """,
+                    (json.dumps(metadata), repo_id, chunk_id),
+                )
+                conn.commit()
+        finally:
+            self._put_connection(conn)
+    
+    def update_chunk_metadata_batch(self, updates: list[tuple[RepoId, str, dict]]) -> None:
+        """
+        청크 메타데이터 배치 업데이트
+        
+        Args:
+            updates: [(repo_id, chunk_id, metadata), ...]
+        """
+        if not updates:
+            return
+        
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                data = [(json.dumps(metadata), repo_id, chunk_id) for repo_id, chunk_id, metadata in updates]
+                
+                execute_batch(
+                    cur,
+                    """
+                    UPDATE code_chunks
+                    SET metadata = %s
+                    WHERE repo_id = %s AND chunk_id = %s
+                    """,
+                    data,
+                    page_size=500,
+                )
+                conn.commit()
+        finally:
+            self._put_connection(conn)
+        
+        logger.info(f"Updated metadata for {len(updates)} chunks")
+    
+    def get_chunk_metadata(self, repo_id: RepoId, chunk_id: str) -> dict | None:
+        """청크 메타데이터 조회"""
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata FROM code_chunks WHERE repo_id = %s AND chunk_id = %s",
+                    (repo_id, chunk_id),
+                )
+                row = cur.fetchone()
+                
+                if row and row[0]:
+                    return row[0]
+        finally:
+            self._put_connection(conn)
+        
+        return None

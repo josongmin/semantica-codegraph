@@ -20,7 +20,7 @@ def file_meta(sample_python_file):
         "repo_id": "test-repo",
         "path": "sample_python.py",
         "abs_path": str(sample_python_file),
-        "language": "python"
+        "language": "python",
     }
 
 
@@ -194,4 +194,3 @@ def test_parameter_extraction(file_meta):
     params = calculate_func.attrs.get("parameters", [])
     assert len(params) > 0, "파라미터가 추출되어야 함"
     assert any(p["name"] == "items" for p in params)
-

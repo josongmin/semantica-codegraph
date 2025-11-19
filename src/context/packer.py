@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ScoredSnippet:
     """점수가 매겨진 스니펫"""
+
     snippet: PackedSnippet
     score: float
     tokens: int
@@ -48,12 +49,12 @@ class ContextPacker:
 
     # 역할별 우선순위 (높을수록 중요)
     ROLE_PRIORITY = {
-        "caller": 10,    # 사용 예시 (가장 중요)
-        "callee": 8,     # 의존성
-        "type": 7,       # 타입 정의
-        "test": 5,       # 테스트 코드
-        "related": 3,    # 관련 코드
-        "other": 1,      # 기타
+        "caller": 10,  # 사용 예시 (가장 중요)
+        "callee": 8,  # 의존성
+        "type": 7,  # 타입 정의
+        "test": 5,  # 테스트 코드
+        "related": 3,  # 관련 코드
+        "other": 1,  # 기타
     }
 
     def __init__(
@@ -145,8 +146,7 @@ class ContextPacker:
         # 1. Primary snippet
         primary_candidate = candidates[0]
         primary_chunk = self.chunk_store.get_chunk(
-            primary_candidate.repo_id,
-            primary_candidate.chunk_id
+            primary_candidate.repo_id, primary_candidate.chunk_id
         )
 
         if not primary_chunk:
@@ -161,8 +161,8 @@ class ContextPacker:
             meta={
                 "chunk_id": primary_chunk.id,
                 "node_id": primary_chunk.node_id,
-                "features": primary_candidate.features
-            }
+                "features": primary_candidate.features,
+            },
         )
 
         primary_tokens = self._estimate_tokens(primary.text)
@@ -174,10 +174,7 @@ class ContextPacker:
         scored_snippets = []
 
         for candidate in candidates[1:]:
-            chunk = self.chunk_store.get_chunk(
-                candidate.repo_id,
-                candidate.chunk_id
-            )
+            chunk = self.chunk_store.get_chunk(candidate.repo_id, candidate.chunk_id)
 
             if not chunk:
                 continue
@@ -203,15 +200,13 @@ class ContextPacker:
                     "node_id": chunk.node_id,
                     "features": candidate.features,
                     "role_priority": role_priority,
-                    "search_score": search_score
-                }
+                    "search_score": search_score,
+                },
             )
 
             tokens = self._estimate_tokens(chunk.text)
 
-            scored_snippets.append(
-                ScoredSnippet(snippet=snippet, score=final_score, tokens=tokens)
-            )
+            scored_snippets.append(ScoredSnippet(snippet=snippet, score=final_score, tokens=tokens))
 
         # 3. 점수 기반 정렬 (높은 점수 우선)
         scored_snippets.sort(key=lambda x: x.score, reverse=True)
@@ -230,12 +225,7 @@ class ContextPacker:
 
             # Span overlap 체크
             has_overlap = any(
-                self._spans_overlap(
-                    scored.snippet.span,
-                    span,
-                    scored.snippet.file_path,
-                    file_path
-                )
+                self._spans_overlap(scored.snippet.span, span, scored.snippet.file_path, file_path)
                 for file_path, span in selected_spans
             )
 
@@ -260,13 +250,11 @@ class ContextPacker:
                 primary_chunk.node_id,
                 remaining_tokens // 2,
                 seen_chunks,
-                selected_spans
+                selected_spans,
             )
             supporting.extend(graph_snippets)
 
-        total_supporting_tokens = sum(
-            self._estimate_tokens(s.text) for s in supporting
-        )
+        total_supporting_tokens = sum(self._estimate_tokens(s.text) for s in supporting)
 
         logger.info(
             f"Packed: primary={primary_tokens}t, "
@@ -276,10 +264,7 @@ class ContextPacker:
         return PackedContext(primary=primary, supporting=supporting)
 
     def _estimate_role(
-        self,
-        chunk: CodeChunk,
-        primary_chunk: CodeChunk,
-        candidate: Candidate
+        self, chunk: CodeChunk, primary_chunk: CodeChunk, candidate: Candidate
     ) -> str:
         """
         스니펫의 역할 추정
@@ -303,8 +288,7 @@ class ContextPacker:
             try:
                 # Primary → chunk 방향 엣지 (Primary가 호출하는 것)
                 outgoing_edges = self.graph_store.get_edges(
-                    primary_chunk.repo_id,
-                    primary_chunk.node_id
+                    primary_chunk.repo_id, primary_chunk.node_id
                 )
 
                 for edge in outgoing_edges:
@@ -315,10 +299,7 @@ class ContextPacker:
                             return "type"
 
                 # chunk → Primary 방향 엣지 (Primary를 호출하는 것)
-                incoming_edges = self.graph_store.get_edges(
-                    chunk.repo_id,
-                    chunk.node_id
-                )
+                incoming_edges = self.graph_store.get_edges(chunk.repo_id, chunk.node_id)
 
                 for edge in incoming_edges:
                     if edge.target_id == primary_chunk.node_id:
@@ -346,7 +327,7 @@ class ContextPacker:
         span1: tuple[int, int, int, int],
         span2: tuple[int, int, int, int],
         file_path1: str,
-        file_path2: str
+        file_path2: str,
     ) -> bool:
         """
         두 스팬이 겹치는지 확인
@@ -377,7 +358,7 @@ class ContextPacker:
         node_id: str,
         max_tokens: int,
         seen_chunks: set,
-        selected_spans: list[tuple[str, tuple[int, int, int, int]]]
+        selected_spans: list[tuple[str, tuple[int, int, int, int]]],
     ) -> list[PackedSnippet]:
         """
         그래프 기반 관련 코드 조회
@@ -457,8 +438,8 @@ class ContextPacker:
                             "chunk_id": chunk.id,
                             "node_id": chunk.node_id,
                             "relation": "graph_neighbor",
-                            "edge_type": edge.type
-                        }
+                            "edge_type": edge.type,
+                        },
                     )
                 )
 
@@ -472,10 +453,7 @@ class ContextPacker:
         return snippets
 
     def to_prompt(
-        self,
-        context: PackedContext,
-        query: str | None = None,
-        format: str = "markdown"
+        self, context: PackedContext, query: str | None = None, format: str = "markdown"
     ) -> str:
         """
         PackedContext를 LLM 프롬프트 문자열로 변환
@@ -493,11 +471,7 @@ class ContextPacker:
         else:
             return self._to_plain_prompt(context, query)
 
-    def _to_markdown_prompt(
-        self,
-        context: PackedContext,
-        query: str | None = None
-    ) -> str:
+    def _to_markdown_prompt(self, context: PackedContext, query: str | None = None) -> str:
         """Markdown 형식 프롬프트 생성"""
         lines = []
 
@@ -512,7 +486,9 @@ class ContextPacker:
         start_line, _, end_line, _ = primary.span
         language = self._detect_language(primary.file_path)
 
-        lines.append(f"### Primary Code: `{primary.file_path}` (Line {start_line + 1}-{end_line + 1})")
+        lines.append(
+            f"### Primary Code: `{primary.file_path}` (Line {start_line + 1}-{end_line + 1})"
+        )
         lines.append("")
         lines.append(f"```{language}")
         lines.append(primary.text)
@@ -544,7 +520,7 @@ class ContextPacker:
                     "callee": "호출되는 코드",
                     "type": "타입 정의",
                     "test": "테스트 코드",
-                    "related": "관련 코드"
+                    "related": "관련 코드",
                 }.get(role, role)
 
                 lines.append(f"#### {role_label}")
@@ -554,7 +530,9 @@ class ContextPacker:
                     start_line, _, end_line, _ = snippet.span
                     language = self._detect_language(snippet.file_path)
 
-                    lines.append(f"**`{snippet.file_path}`** (Line {start_line + 1}-{end_line + 1})")
+                    lines.append(
+                        f"**`{snippet.file_path}`** (Line {start_line + 1}-{end_line + 1})"
+                    )
                     lines.append("")
                     lines.append(f"```{language}")
                     lines.append(snippet.text)
@@ -573,7 +551,9 @@ class ContextPacker:
                     start_line, _, end_line, _ = snippet.span
                     language = self._detect_language(snippet.file_path)
 
-                    lines.append(f"**`{snippet.file_path}`** (Line {start_line + 1}-{end_line + 1})")
+                    lines.append(
+                        f"**`{snippet.file_path}`** (Line {start_line + 1}-{end_line + 1})"
+                    )
                     lines.append("")
                     lines.append(f"```{language}")
                     lines.append(snippet.text)
@@ -582,11 +562,7 @@ class ContextPacker:
 
         return "\n".join(lines)
 
-    def _to_plain_prompt(
-        self,
-        context: PackedContext,
-        query: str | None = None
-    ) -> str:
+    def _to_plain_prompt(self, context: PackedContext, query: str | None = None) -> str:
         """Plain 텍스트 형식 프롬프트 생성"""
         lines = []
 
@@ -617,7 +593,9 @@ class ContextPacker:
             for i, snippet in enumerate(context.supporting, 1):
                 start_line, _, end_line, _ = snippet.span
 
-                lines.append(f"[{i}] {snippet.role.upper()}: {snippet.file_path} (Line {start_line + 1}-{end_line + 1})")
+                lines.append(
+                    f"[{i}] {snippet.role.upper()}: {snippet.file_path} (Line {start_line + 1}-{end_line + 1})"
+                )
                 lines.append("-" * 80)
                 lines.append(snippet.text)
                 lines.append("")

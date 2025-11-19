@@ -134,4 +134,3 @@ class AuthService:
 def validate_email(email: str) -> bool:
     """이메일 유효성 검사"""
     return "@" in email and "." in email.split("@")[1]
-

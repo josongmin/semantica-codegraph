@@ -3,7 +3,13 @@
 import asyncio
 import logging
 import sys
+from pathlib import Path
 from typing import Any
+
+# 프로젝트 루트를 PYTHONPATH에 추가
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from src.core.bootstrap import create_bootstrap
 
@@ -16,7 +22,7 @@ logging.basicConfig(
     handlers=[
         # MCP는 stdio로 통신하므로 stderr로 로그 출력
         logging.StreamHandler(sys.stderr)
-    ]
+    ],
 )
 
 logger = logging.getLogger(__name__)
@@ -60,19 +66,11 @@ class MCPServer:
 
         return {
             "protocolVersion": "2024-11-05",
-            "serverInfo": {
-                "name": "semantica-codegraph",
-                "version": "0.1.0"
-            },
+            "serverInfo": {"name": "semantica-codegraph", "version": "0.1.0"},
             "capabilities": {
-                "tools": {
-                    "listChanged": False
-                },
-                "resources": {
-                    "subscribe": False,
-                    "listChanged": False
-                }
-            }
+                "tools": {"listChanged": False},
+                "resources": {"subscribe": False, "listChanged": False},
+            },
         }
 
     async def handle_tools_list(self) -> dict[str, Any]:
@@ -87,11 +85,7 @@ class MCPServer:
         tools = self.handlers.get_tool_definitions()
         return {"tools": tools}
 
-    async def handle_tools_call(
-        self,
-        name: str,
-        arguments: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def handle_tools_call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         도구 호출 요청 처리
 
@@ -105,7 +99,9 @@ class MCPServer:
         logger.info(f"Handling tools/call: {name}")
 
         try:
-            if name == "search_code":
+            if name == "list_repositories":
+                result = await self.handlers.handle_list_repositories(arguments)
+            elif name == "search_code":
                 result = await self.handlers.handle_search_code(arguments)
             elif name == "find_definition":
                 result = await self.handlers.handle_find_definition(arguments)
@@ -116,26 +112,11 @@ class MCPServer:
             else:
                 result = {"error": f"Unknown tool: {name}"}
 
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": str(result)
-                    }
-                ]
-            }
+            return {"content": [{"type": "text", "text": str(result)}]}
 
         except Exception as e:
             logger.error(f"Tool call failed: {e}", exc_info=True)
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"Error: {str(e)}"
-                    }
-                ],
-                "isError": True
-            }
+            return {"content": [{"type": "text", "text": f"Error: {str(e)}"}], "isError": True}
 
     async def handle_resources_list(self) -> dict[str, Any]:
         """
@@ -170,22 +151,16 @@ class MCPServer:
                         {
                             "uri": resource["uri"],
                             "mimeType": resource["mimeType"],
-                            "text": str(resource["data"])
+                            "text": str(resource["data"]),
                         }
                     ]
                 }
             else:
-                return {
-                    "contents": [],
-                    "error": f"Resource not found: {uri}"
-                }
+                return {"contents": [], "error": f"Resource not found: {uri}"}
 
         except Exception as e:
             logger.error(f"Resource read failed: {e}", exc_info=True)
-            return {
-                "contents": [],
-                "error": str(e)
-            }
+            return {"contents": [], "error": str(e)}
 
     async def run_stdio(self):
         """

@@ -3,4 +3,3 @@
 from .symbol_fuzzy_matcher import SymbolFuzzyMatcher
 
 __all__ = ["SymbolFuzzyMatcher"]
-
