@@ -107,6 +107,27 @@ class GraphStorePort(Protocol):
             CodeNode 리스트
         """
         ...
+    
+    def neighbors_with_edges(
+        self,
+        repo_id: RepoId,
+        node_id: str,
+        edge_types: list[str] | None = None,
+        k: int = 1,
+    ) -> list[tuple[CodeNode, str, int]]:
+        """
+        노드의 이웃 노드를 edge 정보와 함께 조회
+        
+        Args:
+            repo_id: 저장소 ID
+            node_id: 노드 ID
+            edge_types: 엣지 타입 필터 (예: ["calls", "uses"])
+            k: 홉 수 (1 = 직접 이웃만)
+        
+        Returns:
+            (CodeNode, edge_type, depth) 튜플 리스트
+        """
+        ...
 
     def list_nodes(
         self,

@@ -101,48 +101,32 @@ class HybridRetriever:
         candidates = {}  # chunk_id -> Candidate
 
         # 1. Lexical 검색
+        lexical_results_raw = []
         if weights.get("lexical", 0) > 0:
             try:
                 lexical_k = int(k * self.config.lexical_fetch_multiplier)
-                lexical_results = self.lexical_search.search(
+                lexical_results_raw = self.lexical_search.search(
                     repo_id=repo_id,
                     query=query,
                     k=lexical_k,
                     filters=location_ctx.filters if location_ctx else None,
                 )
-
-                for result in lexical_results:
-                    normalized_score = self._normalize_lexical_score(result.score)
-                    candidates[result.chunk_id] = self._result_to_candidate(
-                        result, lexical_score=normalized_score
-                    )
-
-                logger.debug(f"Lexical: {len(lexical_results)} results")
+                logger.debug(f"Lexical: {len(lexical_results_raw)} results")
             except Exception as e:
                 logger.error(f"Lexical search failed: {e}")
 
         # 2. Semantic 검색
+        semantic_results_raw = []
         if weights.get("semantic", 0) > 0:
             try:
                 semantic_k = int(k * self.config.semantic_fetch_multiplier)
-                semantic_results = self.semantic_search.search(
+                semantic_results_raw = self.semantic_search.search(
                     repo_id=repo_id,
                     query=query,
                     k=semantic_k,
                     filters=location_ctx.filters if location_ctx else None,
                 )
-
-                for result in semantic_results:
-                    normalized_score = self._normalize_semantic_score(result.score)
-                    if result.chunk_id in candidates:
-                        # 이미 있으면 semantic_score 추가
-                        candidates[result.chunk_id].features["semantic_score"] = normalized_score
-                    else:
-                        candidates[result.chunk_id] = self._result_to_candidate(
-                            result, semantic_score=normalized_score
-                        )
-
-                logger.debug(f"Semantic: {len(semantic_results)} results")
+                logger.debug(f"Semantic: {len(semantic_results_raw)} results")
             except Exception as e:
                 logger.error(f"Semantic search failed: {e}")
 
@@ -158,36 +142,44 @@ class HybridRetriever:
                 )
 
                 if current_node:
-                    # 이웃 노드 확장
-                    neighbors = self.graph_search.expand_neighbors(
+                    # 이웃 노드를 edge 정보와 함께 확장
+                    neighbors_with_edges = self.graph_search.expand_neighbors_with_edges(
                         repo_id=repo_id,
                         node_id=current_node.id,
                         k=2,  # 2-hop 이웃
                     )
 
-                    # 노드를 Candidate로 변환 (chunk와 1:1 매핑 가정)
-                    graph_neighbors = neighbors[: int(k * self.config.graph_fetch_multiplier)]
-                    for i, neighbor in enumerate(graph_neighbors):
-                        # 거리 기반 점수 (가까울수록 높음)
-                        distance_score = 1.0 / (i + 1)
-                        normalized_score = self._normalize_graph_score(distance_score)
+                    # 노드를 Candidate로 변환
+                    graph_neighbors = neighbors_with_edges[: int(k * self.config.graph_fetch_multiplier)]
+                    for neighbor_node, edge_type, depth in graph_neighbors:
+                        # Edge 타입별 가중치 적용
+                        edge_weight = self.config.graph_edge_weights.get(edge_type, 0.5)
+
+                        # Depth decay 적용 (깊이가 깊어질수록 점수 감소)
+                        depth_decay = self.config.graph_depth_decay ** (depth - 1)
+
+                        # 최종 graph score = edge_weight * depth_decay
+                        graph_score = edge_weight * depth_decay
+                        normalized_score = self._normalize_graph_score(graph_score)
 
                         # chunk_id는 node_id와 동일하다고 가정
                         # (실제로는 node -> chunk 매핑 필요)
-                        chunk_id = f"chunk-{neighbor.id}"
+                        chunk_id = f"chunk-{neighbor_node.id}"
 
                         if chunk_id in candidates:
-                            candidates[chunk_id].features["graph_score"] = normalized_score
+                            # 기존 점수보다 높으면 업데이트 (여러 경로로 도달 가능)
+                            existing_score = candidates[chunk_id].features.get("graph_score", 0)
+                            candidates[chunk_id].features["graph_score"] = max(existing_score, normalized_score)
                         else:
                             candidates[chunk_id] = Candidate(
                                 repo_id=repo_id,
                                 chunk_id=chunk_id,
                                 features={"graph_score": normalized_score},
-                                file_path=neighbor.file_path,
-                                span=neighbor.span,
+                                file_path=neighbor_node.file_path,
+                                span=neighbor_node.span,
                             )
 
-                    logger.debug(f"Graph: {len(neighbors)} neighbors")
+                    logger.debug(f"Graph: {len(neighbors_with_edges)} neighbors with edges")
             except Exception as e:
                 logger.error(f"Graph search failed: {e}")
 
@@ -213,9 +205,9 @@ class HybridRetriever:
                         # 순위 기반 점수 (첫 번째가 가장 높음)
                         rank_score = 1.0 / (i + 1)
                         normalized_match_score = self._normalize_fuzzy_score(match.score)
-                        fuzzy_score = normalized_match_score * rank_score
+                        base_fuzzy_score = normalized_match_score * rank_score
 
-                        # node_id → chunk_id 매핑
+                        # node_id → chunk_id 매핑 (개선: 모든 청크 반환)
                         if match.node_id and self.chunk_store:
                             # ChunkStore에서 실제 chunk 조회
                             try:
@@ -224,21 +216,64 @@ class HybridRetriever:
                                 )
 
                                 if chunks:
-                                    # 첫 번째 chunk 사용
-                                    chunk = chunks[0]
-                                    chunk_id = chunk.id
-                                    file_path = chunk.file_path
-                                    span = chunk.span
+                                    # 모든 청크에 점수 분배 (최대 max_chunks_per_node개)
+                                    max_chunks = self.config.fuzzy_max_chunks_per_node
+                                    selected_chunks = chunks[:max_chunks]
+                                    num_chunks = len(selected_chunks)
+
+                                    # 청크 수에 따라 점수 분배
+                                    distributed_score = base_fuzzy_score / num_chunks
+
+                                    for chunk in selected_chunks:
+                                        chunk_id = chunk.id
+
+                                        if chunk_id in candidates:
+                                            # 기존 점수보다 높으면 업데이트
+                                            existing_score = candidates[chunk_id].features.get("fuzzy_score", 0)
+                                            candidates[chunk_id].features["fuzzy_score"] = max(
+                                                existing_score, distributed_score
+                                            )
+                                        else:
+                                            # 새로운 candidate 추가
+                                            candidates[chunk_id] = Candidate(
+                                                repo_id=repo_id,
+                                                chunk_id=chunk_id,
+                                                features={"fuzzy_score": distributed_score},
+                                                file_path=chunk.file_path,
+                                                span=chunk.span,
+                                            )
                                 else:
                                     # chunk 없으면 임시 ID
                                     chunk_id = f"chunk-{match.node_id}"
                                     file_path = match.file_path or ""
                                     span = (0, 0, 0, 0)
+
+                                    if chunk_id in candidates:
+                                        candidates[chunk_id].features["fuzzy_score"] = base_fuzzy_score
+                                    else:
+                                        candidates[chunk_id] = Candidate(
+                                            repo_id=repo_id,
+                                            chunk_id=chunk_id,
+                                            features={"fuzzy_score": base_fuzzy_score},
+                                            file_path=file_path,
+                                            span=span,
+                                        )
                             except Exception as e:
                                 logger.debug(f"Failed to get chunk for node {match.node_id}: {e}")
                                 chunk_id = f"chunk-{match.node_id}"
                                 file_path = match.file_path or ""
                                 span = (0, 0, 0, 0)
+
+                                if chunk_id in candidates:
+                                    candidates[chunk_id].features["fuzzy_score"] = base_fuzzy_score
+                                else:
+                                    candidates[chunk_id] = Candidate(
+                                        repo_id=repo_id,
+                                        chunk_id=chunk_id,
+                                        features={"fuzzy_score": base_fuzzy_score},
+                                        file_path=file_path,
+                                        span=span,
+                                    )
                         else:
                             # ChunkStore 없으면 임시 ID
                             chunk_id = (
@@ -249,17 +284,17 @@ class HybridRetriever:
                             file_path = match.file_path or ""
                             span = (0, 0, 0, 0)
 
-                        if chunk_id in candidates:
-                            candidates[chunk_id].features["fuzzy_score"] = fuzzy_score
-                        else:
-                            # 새로운 candidate 추가
-                            candidates[chunk_id] = Candidate(
-                                repo_id=repo_id,
-                                chunk_id=chunk_id,
-                                features={"fuzzy_score": fuzzy_score},
-                                file_path=file_path,
-                                span=span,
-                            )
+                            if chunk_id in candidates:
+                                candidates[chunk_id].features["fuzzy_score"] = base_fuzzy_score
+                            else:
+                                # 새로운 candidate 추가
+                                candidates[chunk_id] = Candidate(
+                                    repo_id=repo_id,
+                                    chunk_id=chunk_id,
+                                    features={"fuzzy_score": base_fuzzy_score},
+                                    file_path=file_path,
+                                    span=span,
+                                )
 
                     if fuzzy_matches:
                         logger.debug(f"Fuzzy: '{token}' → {len(fuzzy_matches)} matches")
@@ -267,10 +302,43 @@ class HybridRetriever:
             except Exception as e:
                 logger.error(f"Fuzzy search failed: {e}")
 
-        # 5. Candidate 리스트로 변환
+        # 5. Backend별 점수 정규화 적용
+        normalization_method = self.config.score_normalization_method
+
+        # Lexical 정규화
+        if lexical_results_raw:
+            lexical_normalized = self._normalize_scores(
+                [(r.chunk_id, r.score) for r in lexical_results_raw],
+                method=normalization_method
+            )
+            for result in lexical_results_raw:
+                normalized_score = lexical_normalized.get(result.chunk_id, 0)
+                if result.chunk_id in candidates:
+                    candidates[result.chunk_id].features["lexical_score"] = normalized_score
+                else:
+                    candidates[result.chunk_id] = self._result_to_candidate(
+                        result, lexical_score=normalized_score
+                    )
+
+        # Semantic 정규화
+        if semantic_results_raw:
+            semantic_normalized = self._normalize_scores(
+                [(r.chunk_id, r.score) for r in semantic_results_raw],
+                method=normalization_method
+            )
+            for result in semantic_results_raw:
+                normalized_score = semantic_normalized.get(result.chunk_id, 0)
+                if result.chunk_id in candidates:
+                    candidates[result.chunk_id].features["semantic_score"] = normalized_score
+                else:
+                    candidates[result.chunk_id] = self._result_to_candidate(
+                        result, semantic_score=normalized_score
+                    )
+
+        # 6. Candidate 리스트로 변환
         candidate_list = list(candidates.values())
 
-        # 6. 총 점수 계산 (정규화된 점수에 weight 적용)
+        # 7. 총 점수 계산 (정규화된 점수에 weight 적용)
         for candidate in candidate_list:
             total_score = (
                 candidate.features.get("lexical_score", 0) * weights.get("lexical", 0)
@@ -279,12 +347,12 @@ class HybridRetriever:
                 + candidate.features.get("fuzzy_score", 0) * weights.get("fuzzy", 0)
             )
             candidate.features["total_score"] = total_score
-            candidate.features["final_score"] = total_score  # final_score도 설정
+            candidate.features["final_score"] = total_score
 
-        # 7. 점수 기준 정렬
+        # 8. 점수 기준 정렬
         candidate_list.sort(key=lambda c: c.features.get("final_score", 0), reverse=True)
 
-        # 8. 상위 k개 반환
+        # 9. 상위 k개 반환
         result = candidate_list[:k]
         logger.info(f"Retrieved {len(result)} candidates")
 
@@ -314,12 +382,84 @@ class HybridRetriever:
             span=result.span,
         )
 
+    def _normalize_scores(
+        self,
+        results: list[tuple[str, float]],
+        method: str = "rank"
+    ) -> dict[str, float]:
+        """
+        검색 결과 점수를 정규화
+
+        Args:
+            results: (id, score) 튜플 리스트
+            method: 정규화 방법 ("minmax" | "rank" | "zscore")
+
+        Returns:
+            {id: normalized_score} 딕셔너리
+        """
+        if not results:
+            return {}
+
+        if method == "rank":
+            # Rank-based: 순위를 역순으로 정규화 (1등이 1.0)
+            n = len(results)
+            return {
+                id_: (n - rank) / n
+                for rank, (id_, _) in enumerate(results)
+            }
+
+        elif method == "minmax":
+            # Min-Max: 최소-최대 범위로 정규화
+            scores = [s for _, s in results]
+            min_score = min(scores)
+            max_score = max(scores)
+
+            if max_score == min_score:
+                return {id_: 1.0 for id_, _ in results}
+
+            return {
+                id_: (score - min_score) / (max_score - min_score)
+                for id_, score in results
+            }
+
+        elif method == "zscore":
+            # Z-score: 평균과 표준편차로 정규화
+            import statistics
+            scores = [s for _, s in results]
+            mean = statistics.mean(scores)
+
+            try:
+                stdev = statistics.stdev(scores)
+                if stdev == 0:
+                    return {id_: 1.0 for id_, _ in results}
+
+                normalized = {
+                    id_: (score - mean) / stdev
+                    for id_, score in results
+                }
+
+                # Z-score는 음수일 수 있으므로 0~1로 재조정
+                z_scores = list(normalized.values())
+                min_z = min(z_scores)
+                max_z = max(z_scores)
+
+                if max_z == min_z:
+                    return dict.fromkeys(normalized, 1.0)
+
+                return {
+                    id_: (z - min_z) / (max_z - min_z)
+                    for id_, z in normalized.items()
+                }
+            except statistics.StatisticsError:
+                return {id_: 1.0 for id_, _ in results}
+
+        else:
+            # 기본값: rank
+            return self._normalize_scores(results, method="rank")
+
     def _normalize_lexical_score(self, score: float) -> float:
         """
-        Lexical(BM25) 점수를 0~1로 정규화
-
-        BM25는 일반적으로 0~10 범위이지만 이론적으로는 무한대까지 가능.
-        config에서 설정한 최대값으로 clipping 후 정규화.
+        Lexical(BM25) 점수를 0~1로 정규화 (레거시 메서드)
 
         Args:
             score: 원본 BM25 점수
@@ -394,11 +534,12 @@ class HybridRetriever:
 
     def _extract_symbol_tokens(self, query: str) -> list[str]:
         """
-        쿼리에서 심볼 토큰 추출
+        쿼리에서 심볼 토큰 추출 (개선 버전)
 
         - CamelCase 분리: UserService → User, Service
+        - 약어 처리: HTTPSConnection → HTTPS, Connection
         - snake_case 분리: user_service → user, service
-        - 공백 분리
+        - 불용어 필터링
         - 최소 길이 필터링 & 중복 제거
 
         Args:
@@ -408,27 +549,73 @@ class HybridRetriever:
             토큰 리스트
         """
         tokens = []
+        stopwords = set(self.config.fuzzy_stopwords)
 
         # 1. 공백으로 분리
         words = query.split()
 
         for word in words:
-            # 2. CamelCase 분리 (UserService → User, Service)
-            # 대문자로 시작하는 단어들
-            camel_tokens = re.findall(r"[A-Z](?:[a-z]+|[A-Z]*(?=[A-Z]|$))", word)
+            # 원본 단어를 소문자로 변환하여 불용어 체크
+            word_lower = word.lower()
+
+            # 2. 불용어는 건너뛰기
+            if word_lower in stopwords:
+                continue
+
+            # 3. CamelCase 분리 (개선)
+            # HTTPSConnection → HTTPS, Connection
+            # getUserById → get, User, By, Id
+            # getURLFromAPI → get, URL, From, API
+
+            # 연속된 대문자는 약어로 처리
+            # 예: HTTPSConnection → [HTTPS, Connection]
+            camel_tokens = []
+            temp_token = ""
+
+            for i, char in enumerate(word):
+                if char.isupper():
+                    # 다음 문자가 소문자면 새로운 토큰 시작
+                    if i + 1 < len(word) and word[i + 1].islower():
+                        if temp_token:
+                            camel_tokens.append(temp_token)
+                        temp_token = char
+                    # 이전에 쌓인 대문자가 있고, 현재가 대문자면
+                    elif temp_token and temp_token[-1].isupper():
+                        temp_token += char
+                    else:
+                        if temp_token:
+                            camel_tokens.append(temp_token)
+                        temp_token = char
+                elif char.islower() or char.isdigit():
+                    temp_token += char
+                else:
+                    # 특수문자는 토큰 분리
+                    if temp_token:
+                        camel_tokens.append(temp_token)
+                        temp_token = ""
+
+            if temp_token:
+                camel_tokens.append(temp_token)
+
             if camel_tokens:
                 tokens.extend(camel_tokens)
 
-            # 3. snake_case 분리 (user_service → user, service)
-            snake_tokens = re.split(r"[_\-]", word)
-            tokens.extend(snake_tokens)
+            # 4. snake_case, kebab-case 분리
+            snake_tokens = re.split(r"[_\-.]", word)
+            for token in snake_tokens:
+                if token and token.lower() not in stopwords:
+                    tokens.append(token)
 
-            # 4. 원본 단어도 포함
-            tokens.append(word)
+            # 5. 원본 단어도 포함 (불용어가 아닌 경우만)
+            if word_lower not in stopwords:
+                tokens.append(word)
 
-        # 5. 최소 길이 필터 & 중복 제거
+        # 6. 최소 길이 필터 & 불용어 재필터 & 중복 제거
         min_length = self.config.fuzzy_min_token_length
-        tokens = [t for t in tokens if len(t) >= min_length]
+        tokens = [
+            t for t in tokens
+            if len(t) >= min_length and t.lower() not in stopwords
+        ]
         tokens = list(dict.fromkeys(tokens))  # 순서 유지하면서 중복 제거
 
         return tokens
@@ -585,24 +772,31 @@ class HybridRetriever:
             if not current_node:
                 return []
 
-            neighbors = self.graph_search.expand_neighbors(
+            neighbors_with_edges = self.graph_search.expand_neighbors_with_edges(
                 repo_id=repo_id, node_id=current_node.id, k=2
             )
 
             candidates = []
-            graph_neighbors = neighbors[: int(k * self.config.graph_fetch_multiplier)]
-            for i, neighbor in enumerate(graph_neighbors):
-                distance_score = 1.0 / (i + 1)
-                normalized_score = self._normalize_graph_score(distance_score)
-                chunk_id = f"chunk-{neighbor.id}"
+            graph_neighbors = neighbors_with_edges[: int(k * self.config.graph_fetch_multiplier)]
+            for neighbor_node, edge_type, depth in graph_neighbors:
+                # Edge 타입별 가중치 적용
+                edge_weight = self.config.graph_edge_weights.get(edge_type, 0.5)
+
+                # Depth decay 적용
+                depth_decay = self.config.graph_depth_decay ** (depth - 1)
+
+                # 최종 graph score
+                graph_score = edge_weight * depth_decay
+                normalized_score = self._normalize_graph_score(graph_score)
+                chunk_id = f"chunk-{neighbor_node.id}"
 
                 candidates.append(
                     Candidate(
                         repo_id=repo_id,
                         chunk_id=chunk_id,
                         features={"graph_score": normalized_score},
-                        file_path=neighbor.file_path,
-                        span=neighbor.span,
+                        file_path=neighbor_node.file_path,
+                        span=neighbor_node.span,
                     )
                 )
 
@@ -618,10 +812,10 @@ class HybridRetriever:
         k: int,
         weight: float,
     ) -> list[Candidate]:
-        """Fuzzy 검색"""
+        """Fuzzy 검색 (개선: 모든 청크 반환 + 점수 분배)"""
         try:
             query_tokens = self._extract_symbol_tokens(query)
-            candidates = []
+            candidates_map = {}  # chunk_id -> Candidate (중복 방지)
 
             for token in query_tokens:
                 if len(token) < self.config.fuzzy_min_token_length:
@@ -637,9 +831,9 @@ class HybridRetriever:
                 for i, match in enumerate(fuzzy_matches):
                     rank_score = 1.0 / (i + 1)
                     normalized_match_score = self._normalize_fuzzy_score(match.score)
-                    fuzzy_score = normalized_match_score * rank_score
+                    base_fuzzy_score = normalized_match_score * rank_score
 
-                    # node_id → chunk_id 매핑
+                    # node_id → chunk_id 매핑 (개선: 모든 청크 반환)
                     if match.node_id and self.chunk_store:
                         try:
                             chunks = self.chunk_store.get_chunks_by_node(
@@ -647,18 +841,55 @@ class HybridRetriever:
                             )
 
                             if chunks:
-                                chunk = chunks[0]
-                                chunk_id = chunk.id
-                                file_path = chunk.file_path
-                                span = chunk.span
+                                # 모든 청크에 점수 분배
+                                max_chunks = self.config.fuzzy_max_chunks_per_node
+                                selected_chunks = chunks[:max_chunks]
+                                num_chunks = len(selected_chunks)
+                                distributed_score = base_fuzzy_score / num_chunks
+
+                                for chunk in selected_chunks:
+                                    chunk_id = chunk.id
+
+                                    if chunk_id in candidates_map:
+                                        # 기존 점수보다 높으면 업데이트
+                                        existing_score = candidates_map[chunk_id].features.get("fuzzy_score", 0)
+                                        candidates_map[chunk_id].features["fuzzy_score"] = max(
+                                            existing_score, distributed_score
+                                        )
+                                    else:
+                                        candidates_map[chunk_id] = Candidate(
+                                            repo_id=repo_id,
+                                            chunk_id=chunk_id,
+                                            features={"fuzzy_score": distributed_score},
+                                            file_path=chunk.file_path,
+                                            span=chunk.span,
+                                        )
                             else:
                                 chunk_id = f"chunk-{match.node_id}"
                                 file_path = match.file_path or ""
                                 span = (0, 0, 0, 0)
+
+                                if chunk_id not in candidates_map:
+                                    candidates_map[chunk_id] = Candidate(
+                                        repo_id=repo_id,
+                                        chunk_id=chunk_id,
+                                        features={"fuzzy_score": base_fuzzy_score},
+                                        file_path=file_path,
+                                        span=span,
+                                    )
                         except Exception:
                             chunk_id = f"chunk-{match.node_id}"
                             file_path = match.file_path or ""
                             span = (0, 0, 0, 0)
+
+                            if chunk_id not in candidates_map:
+                                candidates_map[chunk_id] = Candidate(
+                                    repo_id=repo_id,
+                                    chunk_id=chunk_id,
+                                    features={"fuzzy_score": base_fuzzy_score},
+                                    file_path=file_path,
+                                    span=span,
+                                )
                     else:
                         chunk_id = (
                             f"chunk-{match.node_id}"
@@ -668,17 +899,16 @@ class HybridRetriever:
                         file_path = match.file_path or ""
                         span = (0, 0, 0, 0)
 
-                    candidates.append(
-                        Candidate(
-                            repo_id=repo_id,
-                            chunk_id=chunk_id,
-                            features={"fuzzy_score": fuzzy_score},
-                            file_path=file_path,
-                            span=span,
-                        )
-                    )
+                        if chunk_id not in candidates_map:
+                            candidates_map[chunk_id] = Candidate(
+                                repo_id=repo_id,
+                                chunk_id=chunk_id,
+                                features={"fuzzy_score": base_fuzzy_score},
+                                file_path=file_path,
+                                span=span,
+                            )
 
-            return candidates
+            return list(candidates_map.values())
         except Exception as e:
             logger.error(f"Fuzzy search failed: {e}")
             return []

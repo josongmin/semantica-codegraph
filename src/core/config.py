@@ -56,6 +56,39 @@ class Config:
     enable_score_normalization: bool = True  # 점수 정규화 활성화 여부
     lexical_score_max: float = 10.0  # Lexical(BM25) 점수 최대값 (정규화용)
     fuzzy_score_max: float = 1.0  # Fuzzy 점수 최대값 (정규화용)
+    score_normalization_method: str = "rank"  # "minmax" | "rank" | "zscore"
+    
+    # Graph scoring 설정
+    graph_depth_decay: float = 0.5  # Depth마다 점수 감소 계수 (0~1)
+    graph_edge_weights: dict[str, float] = None  # Edge 타입별 가중치
+    
+    # Fuzzy scoring 설정
+    fuzzy_stopwords: list[str] | None = None  # 제외할 불용어 리스트
+    fuzzy_max_chunks_per_node: int = 3  # 노드당 반환할 최대 청크 수
+    
+    def __post_init__(self):
+        """기본값 초기화"""
+        # Edge 타입별 기본 가중치 (중요도 순)
+        if self.graph_edge_weights is None:
+            self.graph_edge_weights = {
+                "calls": 1.0,  # 호출 관계가 가장 중요
+                "uses": 0.8,  # 사용 관계
+                "inherits": 0.9,  # 상속 관계
+                "implements": 0.9,  # 인터페이스 구현
+                "imports": 0.6,  # 임포트 관계
+                "defines": 0.7,  # 정의 관계
+                "belongs_to": 0.5,  # 소속 관계
+                "overrides": 0.85,  # 오버라이드
+            }
+        
+        # Fuzzy 검색 불용어 기본값 (일반적인 get/set/is 등)
+        if self.fuzzy_stopwords is None:
+            self.fuzzy_stopwords = [
+                "get", "set", "is", "has", "can", "should", "will",
+                "do", "make", "create", "update", "delete", "find",
+                "to", "from", "with", "for", "by", "on", "at",
+                "the", "a", "an", "and", "or", "but", "in", "of",
+            ]
 
     @classmethod
     def from_env(cls) -> "Config":

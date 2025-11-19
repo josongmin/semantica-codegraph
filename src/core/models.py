@@ -84,6 +84,18 @@ class Candidate:
     span: Span
 
 
+@dataclass
+class NeighborNode:
+    """
+    그래프 탐색 결과 노드 (edge 정보 포함)
+    
+    HybridRetriever의 graph scoring에서 사용
+    """
+    node: CodeNode
+    edge_type: str  # "calls" | "defines" | "inherits" | "imports" | ...
+    depth: int  # 시작 노드로부터의 거리 (hop count)
+
+
 # 4) LLM 컨텍스트용 모델
 @dataclass
 class PackedSnippet:

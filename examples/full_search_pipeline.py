@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """전체 검색 파이프라인 사용 예시"""
 
-import os
+import sys
+from pathlib import Path
 
-# 환경 변수 설정
-os.environ["EMBEDDING_API_KEY"] = "1A1rgggB7kld772jEqCepElYdK5tgW9R"
-os.environ["POSTGRES_PORT"] = "5433"
+# 프로젝트 루트 추가
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-from src.core.bootstrap import create_bootstrap
+# 환경 변수 설정 (필요시 수정)
+# os.environ["EMBEDDING_API_KEY"] = "your-api-key"
+# os.environ["POSTGRES_PORT"] = "7711"  # 기본값
+
+from src.core.bootstrap import create_bootstrap  # noqa: E402
 
 
 def main():
@@ -21,12 +26,12 @@ def main():
     print("\n1. 저장소 인덱싱")
     print("-" * 80)
 
-    result = bootstrap.pipeline.index_repository(
-        root_path="/Users/josongmin/Documents/jo-codes/semantica-codegraph/tests/fixtures",
-        name="example-repo"
-    )
+    # 테스트 fixtures 경로
+    fixtures_path = project_root / "tests" / "fixtures" / "python_project"
 
-    print("✅ 인덱싱 완료:")
+    result = bootstrap.pipeline.index_repository(root_path=str(fixtures_path), name="example-repo")
+
+    print("[OK] 인덱싱 완료:")
     print(f"   - 파일: {result.total_files}개")
     print(f"   - 노드: {result.total_nodes}개")
     print(f"   - 청크: {result.total_chunks}개")
@@ -41,11 +46,7 @@ def main():
     query = "User 클래스"
     print(f"검색 쿼리: '{query}'")
 
-    candidates = bootstrap.hybrid_retriever.retrieve(
-        repo_id=repo_id,
-        query=query,
-        k=10
-    )
+    candidates = bootstrap.hybrid_retriever.retrieve(repo_id=repo_id, query=query, k=10)
 
     print(f"\n검색된 후보: {len(candidates)}개")
     for i, candidate in enumerate(candidates[:3], 1):
@@ -69,10 +70,7 @@ def main():
     print("\n4. Context Packer 적용 (LLM용 컨텍스트)")
     print("-" * 80)
 
-    context = bootstrap.context_packer.pack(
-        candidates=ranked,
-        max_tokens=2000
-    )
+    context = bootstrap.context_packer.pack(candidates=ranked, max_tokens=2000)
 
     print("\nPrimary snippet:")
     print(f"  파일: {context.primary.file_path}")
@@ -107,9 +105,7 @@ def main():
 
     # Markdown 형식 프롬프트
     prompt_markdown = bootstrap.context_packer.to_prompt(
-        context=context,
-        query=query,
-        format="markdown"
+        context=context, query=query, format="markdown"
     )
 
     print("\n[Markdown 형식 프롬프트]")
@@ -118,22 +114,17 @@ def main():
     print("=" * 80)
 
     # Plain 텍스트 형식 프롬프트
-    prompt_plain = bootstrap.context_packer.to_prompt(
-        context=context,
-        query=query,
-        format="plain"
-    )
+    prompt_plain = bootstrap.context_packer.to_prompt(context=context, query=query, format="plain")
 
     print("\n[Plain 텍스트 형식 프롬프트]")
     print("=" * 80)
     print(prompt_plain[:500] + "...")  # 일부만 표시
     print("=" * 80)
 
-    print("\n" + "="*80)
-    print("✅ 전체 파이프라인 완료!")
-    print("="*80)
+    print("\n" + "=" * 80)
+    print("전체 파이프라인 완료!")
+    print("=" * 80)
 
 
 if __name__ == "__main__":
     main()
-

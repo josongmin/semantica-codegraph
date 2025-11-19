@@ -36,6 +36,19 @@ class NodeKind(str, Enum):
         return self.is_code_node()
 
 
+class EdgeType(str, Enum):
+    """코드 그래프 엣지(관계) 타입"""
+    
+    CALLS = "calls"  # 함수/메서드 호출
+    DEFINES = "defines"  # 정의 관계
+    BELONGS_TO = "belongs_to"  # 소속 관계 (메서드 → 클래스)
+    INHERITS = "inherits"  # 상속 관계
+    IMPORTS = "imports"  # 임포트 관계
+    USES = "uses"  # 사용 관계 (변수, 타입 등)
+    OVERRIDES = "overrides"  # 오버라이드 관계
+    IMPLEMENTS = "implements"  # 인터페이스 구현
+
+
 class LexicalSearchBackend(str, Enum):
     """BM25 검색 백엔드 선택"""
 

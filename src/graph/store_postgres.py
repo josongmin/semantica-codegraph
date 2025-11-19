@@ -394,6 +394,105 @@ class PostgresGraphStore(GraphStorePort):
 
         logger.debug(f"Found {len(neighbors)} neighbors for {node_id} ({k}-hop)")
         return neighbors
+    
+    def neighbors_with_edges(
+        self,
+        repo_id: RepoId,
+        node_id: str,
+        edge_types: list[str] | None = None,
+        k: int = 1,
+    ) -> list[tuple[CodeNode, str, int]]:
+        """
+        이웃 노드를 edge 정보와 함께 조회 (k-hop)
+        
+        Args:
+            repo_id: 저장소 ID
+            node_id: 시작 노드 ID
+            edge_types: 필터할 엣지 타입 (None이면 전체)
+            k: hop 수
+        
+        Returns:
+            (CodeNode, edge_type, depth) 튜플 리스트
+        """
+        if k <= 0:
+            return []
+        
+        neighbors_info = []  # [(node_id, edge_type, depth)]
+        visited = {node_id}
+        
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                current_nodes = [node_id]
+                
+                for depth in range(1, k + 1):
+                    if not current_nodes:
+                        break
+                    
+                    # Edge 정보와 함께 다음 노드 조회
+                    if edge_types:
+                        cur.execute(
+                            """
+                            SELECT dst_id, type FROM code_edges
+                            WHERE repo_id = %s
+                              AND src_id = ANY(%s)
+                              AND type = ANY(%s)
+                            """,
+                            (repo_id, current_nodes, edge_types)
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            SELECT dst_id, type FROM code_edges
+                            WHERE repo_id = %s AND src_id = ANY(%s)
+                            """,
+                            (repo_id, current_nodes)
+                        )
+                    
+                    next_nodes = []
+                    for row in cur.fetchall():
+                        dst_id, edge_type = row
+                        if dst_id not in visited:
+                            visited.add(dst_id)
+                            next_nodes.append(dst_id)
+                            neighbors_info.append((dst_id, edge_type, depth))
+                    
+                    current_nodes = next_nodes
+                
+                # 모든 이웃 노드 조회 (배치)
+                if neighbors_info:
+                    neighbor_ids = [n[0] for n in neighbors_info]
+                    
+                    cur.execute(
+                        """
+                        SELECT repo_id, id, kind, language, file_path,
+                               span_start_line, span_start_col, span_end_line, span_end_col,
+                               name, text, attrs
+                        FROM code_nodes
+                        WHERE repo_id = %s AND id = ANY(%s)
+                        """,
+                        (repo_id, neighbor_ids)
+                    )
+                    
+                    # node_id -> CodeNode 매핑
+                    nodes_map = {}
+                    for row in cur.fetchall():
+                        node = self._row_to_node(row)
+                        nodes_map[node.id] = node
+                    
+                    # 결과 조합
+                    result = []
+                    for node_id, edge_type, depth in neighbors_info:
+                        if node_id in nodes_map:
+                            result.append((nodes_map[node_id], edge_type, depth))
+                    
+                    logger.debug(f"Found {len(result)} neighbors with edges for {node_id} ({k}-hop)")
+                    return result
+        
+        finally:
+            self._put_connection(conn)
+        
+        return []
 
     def list_nodes(
         self,

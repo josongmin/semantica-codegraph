@@ -115,4 +115,34 @@ class PostgresGraphSearch(GraphSearchPort):
 
         logger.debug(f"Expanded {len(neighbors)} neighbors for {node_id} (k={k})")
         return neighbors
+    
+    def expand_neighbors_with_edges(
+        self,
+        repo_id: RepoId,
+        node_id: str,
+        edge_types: list[str] | None = None,
+        k: int = 1,
+    ) -> list[tuple[CodeNode, str, int]]:
+        """
+        노드 이웃을 edge 정보와 함께 확장 (k-hop)
+        
+        Args:
+            repo_id: 저장소 ID
+            node_id: 시작 노드 ID
+            edge_types: 관계 타입 필터 (None이면 모든 타입)
+            k: 확장 거리 (홉 수)
+        
+        Returns:
+            (CodeNode, edge_type, depth) 튜플 리스트
+        """
+        if k <= 0:
+            return []
+        
+        # GraphStorePort의 neighbors_with_edges 사용
+        return self.graph_store.neighbors_with_edges(
+            repo_id=repo_id,
+            node_id=node_id,
+            edge_types=edge_types,
+            k=k
+        )
 

@@ -195,7 +195,10 @@ def test_retrieve_with_graph_search(hybrid_retriever, mock_graph_search):
     )
 
     mock_graph_search.get_node_by_location.return_value = current_node
-    mock_graph_search.expand_neighbors.return_value = [neighbor_node]
+    # expand_neighbors_with_edges는 (CodeNode, edge_type, depth) 튜플 반환
+    mock_graph_search.expand_neighbors_with_edges.return_value = [
+        (neighbor_node, "calls", 1)
+    ]
 
     results = hybrid_retriever._retrieve_sequential(
         repo_id=repo_id,
