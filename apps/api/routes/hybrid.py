@@ -478,13 +478,89 @@ async def expand_graph(request: GraphExpandRequest):
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.get("/symbols")
+async def search_symbols_direct(
+    repo_id: str = Query(..., description="저장소 ID"),
+    query: str = Query(..., description="검색 쿼리 (함수/클래스 이름)"),
+    kind: str | None = Query(None, description="심볼 종류 필터 (Function, Class, Method)"),
+    fuzzy: bool = Query(True, description="퍼지 매칭 여부"),
+    decorator: str | None = Query(None, description="Decorator 패턴 (@router.post 등)"),
+    k: int = Query(20, description="결과 개수"),
+):
+    """
+    심볼 직접 검색 (SymbolIndex)
+
+    code_nodes 테이블을 직접 조회하여 빠른 심볼 검색.
+
+    Examples:
+        GET /hybrid/symbols?repo_id=my-repo&query=HybridRetriever&kind=Class
+        GET /hybrid/symbols?repo_id=my-repo&query=search&fuzzy=true
+        GET /hybrid/symbols?repo_id=my-repo&decorator=@router.post
+    """
+    try:
+        # Decorator 검색
+        if decorator:
+            results = bootstrap.symbol_search.search_by_decorator(
+                repo_id=repo_id,
+                decorator_pattern=decorator,
+                k=k,
+            )
+        else:
+            # 이름 검색
+            results = bootstrap.symbol_search.search_by_name(
+                repo_id=repo_id,
+                query=query,
+                kind=kind,
+                fuzzy=fuzzy,
+                k=k,
+            )
+
+        # Response 변환
+        candidates = []
+        for node in results:
+            # 청크에서 스니펫 가져오기
+            chunks = bootstrap.chunk_store.get_chunks_by_node(repo_id, node.id)
+            snippet = ""
+            if chunks:
+                snippet = _get_snippet(chunks[0].text)
+
+            candidates.append(
+                SymbolCandidate(
+                    candidate_id=f"cand-{uuid.uuid4().hex[:8]}",
+                    symbol_name=node.name,
+                    match_score=1.0,  # 직접 조회이므로 스코어는 1.0
+                    file_path=node.file_path,
+                    span=list(node.span),
+                    snippet=snippet,
+                    metadata={
+                        "kind": node.kind,
+                        "language": node.language,
+                        "decorators": node.attrs.get("decorators", []),
+                        "docstring": node.attrs.get("docstring"),
+                    },
+                )
+            )
+
+        return SymbolSearchResponse(
+            symbol_query=query if not decorator else decorator,
+            candidates=candidates,
+        )
+
+    except Exception as e:
+        logger.error(f"Symbol search failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @router.post("/symbols", response_model=SymbolSearchResponse)
 async def search_symbols(request: SymbolSearchRequest):
     """
-    심볼 기반 검색 (Symbol-Level Retrieval)
+    심볼 기반 검색 (Fuzzy Search - 기존 방식)
 
     네이밍 기반 fuzzy + graph 인덱스로 심볼(클래스/함수/메서드/변수) 검색.
     코드레포에서 "이 함수 어디?" 같은 질문을 빠르게 만족시키는 Fast-path.
+
+    Note: 이 엔드포인트는 fuzzy_search를 사용하는 기존 방식입니다.
+          새로운 SymbolIndex 기반 검색은 GET /hybrid/symbols를 사용하세요.
     """
     try:
         if not bootstrap.fuzzy_search:
@@ -637,4 +713,72 @@ async def set_session_preferences(request: SessionPreferenceRequest):
         return SessionPreferenceResponse(session_id=request.session_id, applied=True)
     except Exception as e:
         logger.error(f"Set session preferences failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/endpoints")
+async def list_endpoints(
+    repo_id: str = Query(..., description="저장소 ID"),
+    method: str | None = Query(None, description="HTTP 메서드 필터 (GET, POST, ...)"),
+    path_pattern: str | None = Query(None, description="경로 패턴 (/search, /api 등)"),
+    framework: str | None = Query(None, description="프레임워크 필터 (fastapi, django, spring)"),
+    k: int = Query(100, description="결과 개수"),
+):
+    """
+    API 엔드포인트 목록 조회 (RouteIndex)
+
+    저장소의 모든 API 엔드포인트를 조회하거나 필터링.
+
+    Examples:
+        GET /hybrid/endpoints?repo_id=my-repo
+        GET /hybrid/endpoints?repo_id=my-repo&method=POST
+        GET /hybrid/endpoints?repo_id=my-repo&path_pattern=search
+        GET /hybrid/endpoints?repo_id=my-repo&framework=fastapi
+
+    Returns:
+        - total: 전체 엔드포인트 개수
+        - by_file: 파일별 그룹핑
+        - routes: 전체 라우트 리스트
+    """
+    try:
+        # RouteStore가 없으면 에러
+        if not hasattr(bootstrap, "route_store") or not bootstrap.route_store:
+            raise HTTPException(
+                status_code=503,
+                detail="RouteIndex not available. Run migration 004 and reindex repository.",
+            )
+
+        # Route 검색
+        routes = bootstrap.route_store.search_routes(
+            repo_id=repo_id,
+            method=method,
+            path_pattern=path_pattern,
+            framework=framework,
+            k=k,
+        )
+
+        # 파일별 그룹핑
+        by_file = {}
+        for route in routes:
+            file_path = route["file_path"]
+            if file_path not in by_file:
+                by_file[file_path] = []
+            by_file[file_path].append(route)
+
+        return {
+            "repo_id": repo_id,
+            "total": len(routes),
+            "filters": {
+                "method": method,
+                "path_pattern": path_pattern,
+                "framework": framework,
+            },
+            "by_file": by_file,
+            "routes": routes,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"List endpoints failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e

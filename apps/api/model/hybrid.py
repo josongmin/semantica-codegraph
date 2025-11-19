@@ -148,6 +148,7 @@ class SymbolCandidate(BaseModel):
     file_path: str
     span: list[int]  # [start_line, start_col, end_line, end_col]
     snippet: str
+    metadata: dict = Field(default_factory=dict)  # kind, language, decorators, docstring 등
 
 
 class SymbolSearchResponse(BaseModel):

@@ -60,6 +60,7 @@ class IndexingPipeline:
         chunker: Chunker,
         scanner: RepoScanner,
         parse_cache: ParseCache | None = None,
+        route_store=None,  # RouteStore (optional)
     ):
         """
         Args:
@@ -73,6 +74,7 @@ class IndexingPipeline:
             chunker: 청커
             scanner: 저장소 스캐너
             parse_cache: 파싱 캐시 (None이면 비활성화)
+            route_store: Route 인덱스 스토어 (optional)
         """
         self.repo_store = repo_store
         self.graph_store = graph_store
@@ -83,6 +85,14 @@ class IndexingPipeline:
         self.ir_builder = ir_builder
         self.chunker = chunker
         self.scanner = scanner
+        self.route_store = route_store
+
+        # Route 추출기
+        if route_store:
+            from .route_extractor import RouteExtractor
+            self.route_extractor = RouteExtractor()
+        else:
+            self.route_extractor = None
 
         # 성능 최적화: 파서 캐시
         from typing import Any
@@ -339,6 +349,37 @@ class IndexingPipeline:
                     logger.info(f"Saved {len(vectors)} embeddings")
                 except Exception as e:
                     logger.error(f"Embedding failed: {e}")
+
+            # 10.5. Route 추출 및 저장 (API 엔드포인트 인덱싱)
+            if self.route_store and self.route_extractor:
+                try:
+                    logger.info("Extracting API routes...")
+                    all_routes = []
+                    
+                    # API 파일만 처리
+                    for file_path, profile in file_profiles.items():
+                        if not profile or not profile.is_api_file:
+                            continue
+                        
+                        # 해당 파일의 nodes 가져오기
+                        file_nodes = [n for n in all_nodes if n.file_path == file_path]
+                        
+                        if not file_nodes:
+                            continue
+                        
+                        # Route 추출
+                        routes = self.route_extractor.extract_routes(file_nodes, profile)
+                        all_routes.extend(routes)
+                    
+                    # Route 저장
+                    if all_routes:
+                        self.route_store.save_routes(all_routes)
+                        logger.info(f"Indexed {len(all_routes)} API routes")
+                    else:
+                        logger.info("No API routes found")
+                        
+                except Exception as e:
+                    logger.error(f"Route extraction failed: {e}", exc_info=True)
 
             # 11. 메타데이터 업데이트
             metadata.total_files = len(files)
@@ -610,6 +651,37 @@ class IndexingPipeline:
                     logger.info(f"Saved {len(vectors)} embeddings")
                 except Exception as e:
                     logger.error(f"Embedding failed: {e}")
+
+            # 10.5. Route 추출 및 저장 (API 엔드포인트 인덱싱)
+            if self.route_store and self.route_extractor:
+                try:
+                    logger.info("Extracting API routes...")
+                    all_routes = []
+                    
+                    # API 파일만 처리
+                    for file_path, profile in file_profiles.items():
+                        if not profile or not profile.is_api_file:
+                            continue
+                        
+                        # 해당 파일의 nodes 가져오기
+                        file_nodes = [n for n in all_nodes if n.file_path == file_path]
+                        
+                        if not file_nodes:
+                            continue
+                        
+                        # Route 추출
+                        routes = self.route_extractor.extract_routes(file_nodes, profile)
+                        all_routes.extend(routes)
+                    
+                    # Route 저장
+                    if all_routes:
+                        self.route_store.save_routes(all_routes)
+                        logger.info(f"Indexed {len(all_routes)} API routes")
+                    else:
+                        logger.info("No API routes found")
+                        
+                except Exception as e:
+                    logger.error(f"Route extraction failed: {e}", exc_info=True)
 
             # 11. 메타데이터 업데이트
             metadata.total_files = len(files)

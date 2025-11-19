@@ -30,10 +30,12 @@ class Bootstrap:
         self._semantic_search = None
         self._graph_search = None
         self._fuzzy_search = None
+        self._symbol_search = None
         self._fusion_strategy = None
         self._hybrid_retriever = None
         self._ranker = None
         self._context_packer = None
+        self._route_store = None
 
     def _build_connection_string(self) -> str:
         """PostgreSQL 연결 문자열 생성"""
@@ -181,6 +183,7 @@ class Bootstrap:
                 chunker=self.chunker,
                 scanner=self.scanner,
                 parse_cache=parse_cache,
+                route_store=self.route_store,
             )
             # Config 전달 (병렬 처리 옵션용)
             self._pipeline.config = self.config
@@ -216,6 +219,15 @@ class Bootstrap:
                 graph_store=self.graph_store, config=self.config
             )
         return self._fuzzy_search
+
+    @property
+    def symbol_search(self):
+        """심볼 검색"""
+        if self._symbol_search is None:
+            from ..search.adapters.symbol.postgres_symbol_search import PostgresSymbolSearch
+
+            self._symbol_search = PostgresSymbolSearch(graph_store=self.graph_store)
+        return self._symbol_search
 
     @property
     def fusion_strategy(self):
@@ -281,6 +293,19 @@ class Bootstrap:
                 chunk_store=self.chunk_store, graph_store=self.graph_store
             )
         return self._context_packer
+
+    @property
+    def route_store(self):
+        """Route 인덱스 스토어"""
+        if self._route_store is None:
+            from ..indexer.route_store import RouteStore
+
+            self._route_store = RouteStore(
+                connection_string=self._connection_string,
+                pool_size=2,
+                pool_max=5,
+            )
+        return self._route_store
 
 
 def create_bootstrap(config: Config | None = None) -> Bootstrap:
