@@ -14,7 +14,7 @@ SourceGraph의 Cody처럼 빠르게 코드베이스를 지식화하여 읽을 �
 ## 프로젝트 구조
 
 ```
-src/                    # 라이브러리 코드
+src/                    # 라이브러리 코드 (코드 RAG 엔진영역)
 ├── core/              # 핵심 모델, 포트, 설정, bootstrap (DI)
 ├── indexer/           # 저장소 스캔 및 인덱싱 파이프라인
 ├── parser/             # 코드 파서 (Python, TypeScript)
@@ -41,6 +41,27 @@ apps/                   # 실행 가능한 애플리케이션들
 - Meilisearch
 - BM25
 - Python 3.10+
+- Tree-sitter (코드 파싱)
+- FastAPI (HTTP API)
+
+## 핵심 컴포넌트
+
+### 인덱싱 파이프라인 (IndexingPipeline)
+- **동기/비동기 지원**: 
+  - `index_repository()`: CLI, 동기 환경용
+  - `index_repository_async()`: FastAPI, async 환경용 (asyncio.run 충돌 방지)
+- **순차/병렬 파싱**: 파일 수에 따라 자동 선택 (threshold: 5개)
+- **DI 패턴 일관성**: IRBuilder는 메인 프로세스에서만 사용 (병렬 worker는 파싱만 수행)
+- **파싱 캐시**: 순차/병렬 경로 모두 ParseCache 지원 (파일 해시 기반)
+- **임베딩 최적화**: 
+  - 비동기 배치 처리 (중복 제거)
+  - 모델별 batch_size 최적화 (Mistral:200, OpenAI:150)
+  - max_concurrent로 동시성 제어 (기본값:3)
+
+### 검색 시스템
+- **Hybrid Retriever**: Lexical + Semantic + Graph 결합
+- **Ranker**: 여러 시그널을 통합하여 최종 순위 결정
+- **Context Packer**: LLM에 전달할 컨텍스트 최적화
 
 ## 개발 규칙
 - 타입 힌팅 사용
@@ -67,4 +88,54 @@ apps/                   # 실행 가능한 애플리케이션들
     - 가능한 100-200줄 이내로 제한
     - 코드 블록은 핵심 부분만 발췌
   - 이모지 사용 금지
+  - 오래되거나 중복된 문서는 주기적으로 삭제
+
+## 최근 주요 개선사항
+
+### 1. Async 환경 지원
+- FastAPI에서 `asyncio.run()` 충돌 방지
+- `IndexingPipeline.index_repository_async()` 추가
+- 임베딩 생성 시 `await` 사용
+
+### 2. DI 패턴 일관성
+- 병렬 파싱 경로에서 IRBuilder DI 유지
+- Worker는 파싱만, IR 변환은 메인 프로세스에서 처리
+- 향후 IRBuilder 설정 변경시에도 순차/병렬 경로 동작 일치
+
+### 3. 파싱 캐시 개선
+- 병렬 경로에도 ParseCache 지원
+- 파일 해시 기반 캐시로 대규모 레포 반복 인덱싱 최적화
+- Worker별 독립적인 ParseCache 인스턴스
+
+### 4. 성능 튜닝 포인트
+- 임베딩: `batch_size` × `max_concurrent` 조합 최적화
+- 진행률 업데이트: 20개 파일마다 또는 마지막 파일
+- 병렬 파싱 threshold: 5개 파일
+
+## Cody 대비 개선 계획
+
+### High Priority (2-3주)
+1. **랭킹 시스템 강화**
+   - Recency Score: Git commit 기반 신선도
+   - Popularity Score: PageRank, 참조 빈도
+   - Code Quality: Complexity, 문서화 정도
+
+2. **Graph 검색 강화** (현재: 기본 BFS만 구현)
+   - PageRank 알고리즘 적용 (미구현)
+   - 관계 타입별 가중치 (미구현, 현재는 필터만)
+   - BFS with scoring (미구현)
+
+3. **증분 인덱싱**
+   - Git diff 기반 변경 감지
+   - 변경 파일만 재파싱
+   - Embedding 캐시
+
+### Medium Priority (4-6주)
+4. **언어 지원 확대**: Go, Java, Rust 파서
+5. **컨텍스트 최적화**: 스니펫 압축, 동적 역할 우선순위
+6. **Learning to Rank**: LightGBM 기반 ML 랭킹
+
+### 참고 문서
+- `.temp/cody-comparison-rag-improvements.md`: 상세 비교 분석
+- `.temp/rag-improvement-action-plan.md`: 단계별 구현 계획
 

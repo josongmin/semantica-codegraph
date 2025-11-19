@@ -1,6 +1,5 @@
 """Bootstrap 테스트"""
 
-
 import pytest
 
 from src.core.bootstrap import Bootstrap
@@ -21,7 +20,7 @@ def test_config():
         embedding_model=EmbeddingModel.CODESTRAL_EMBED,
         lexical_search_backend=LexicalSearchBackend.MEILISEARCH,
         meilisearch_url="http://localhost:7700",
-        meilisearch_master_key="test_key"
+        meilisearch_master_key="test_key",
     )
 
 
@@ -226,7 +225,7 @@ def test_meilisearch_adapter_creation(bootstrap):
         search = bootstrap.lexical_search
         assert search is not None
         # MeiliSearchAdapter 인스턴스인지 확인
-        assert hasattr(search, 'client') or hasattr(search, '_get_index_name')
+        assert hasattr(search, "client") or hasattr(search, "_get_index_name")
 
 
 def test_zoekt_adapter_creation():
@@ -238,7 +237,7 @@ def test_zoekt_adapter_creation():
         postgres_password="semantica",
         postgres_db="semantica_codegraph",
         lexical_search_backend=LexicalSearchBackend.ZOEKT,
-        zoekt_url="http://localhost:7713"
+        zoekt_url="http://localhost:7713",
     )
 
     bootstrap = Bootstrap(config)
@@ -255,7 +254,7 @@ def test_bootstrap_with_minimal_config():
         postgres_port=7711,
         postgres_user="semantica",
         postgres_password="semantica",
-        postgres_db="semantica_codegraph"
+        postgres_db="semantica_codegraph",
     )
 
     bootstrap = Bootstrap(config)
@@ -284,4 +283,3 @@ def test_bootstrap_dependency_order(bootstrap):
 
     # 모든 서비스가 정상적으로 생성되었는지 확인
     assert bootstrap.pipeline is not None
-

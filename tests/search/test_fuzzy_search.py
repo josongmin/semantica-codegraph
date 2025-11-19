@@ -5,7 +5,7 @@ import pytest
 from src.core.config import Config
 from src.core.models import CodeNode
 from src.graph.store_postgres import PostgresGraphStore
-from src.search.fuzzy.symbol_fuzzy_matcher import SymbolFuzzyMatcher
+from src.search.adapters.fuzzy.symbol_fuzzy_matcher import SymbolFuzzyMatcher
 
 
 @pytest.fixture

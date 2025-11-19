@@ -60,16 +60,21 @@ class Maybe(Generic[T]):
 
     def map(self, func: Callable[[T], R]) -> "Maybe[R]":
         if self.is_just():
+            assert self._value is not None
             return Maybe.just(func(self._value))
         return Maybe.nothing()
 
     def bind(self, func: Callable[[T], "Maybe[R]"]) -> "Maybe[R]":
         if self.is_just():
+            assert self._value is not None
             return func(self._value)
         return Maybe.nothing()
 
     def get_or_else(self, default: T) -> T:
-        return self._value if self.is_just() else default
+        if self.is_just():
+            assert self._value is not None
+            return self._value
+        return default
 
 
 # 고급 데코레이터 패턴
@@ -211,19 +216,20 @@ class Transaction:
         return False
 
 
-class ResourcePool:
+class ResourcePool(Generic[T]):
     """리소스 풀 패턴"""
 
     def __init__(self, factory: Callable[[], T], max_size: int = 10):
         self.factory = factory
         self.max_size = max_size
-        self.pool: deque = deque()
+        self.pool: deque[T] = deque()
         self.in_use: set[T] = set()
         self.lock = Lock()
 
     def acquire(self) -> T:
         """리소스 획득"""
         with self.lock:
+            resource: T
             if self.pool:
                 resource = self.pool.popleft()
             elif len(self.in_use) < self.max_size:
@@ -244,7 +250,7 @@ class ResourcePool:
     @contextmanager
     def resource(self):
         """컨텍스트 매니저로 리소스 사용"""
-        res = self.acquire()
+        res: T = self.acquire()
         try:
             yield res
         finally:
@@ -349,12 +355,12 @@ class ConcreteProductB(Product):
 class ProductFactory:
     """제품 팩토리"""
 
-    _products: dict[str, type] = {"A": ConcreteProductA, "B": ConcreteProductB}
+    _products: dict[str, type[Product]] = {"A": ConcreteProductA, "B": ConcreteProductB}
 
     @classmethod
     def create(cls, product_type: str) -> Product:
         """제품 생성"""
-        product_class = cls._products.get(product_type)
+        product_class: type[Product] | None = cls._products.get(product_type)
         if product_class:
             return product_class()
         raise ValueError(f"Unknown product type: {product_type}")
@@ -640,14 +646,14 @@ class State(ABC):
     """상태 추상 클래스"""
 
     @abstractmethod
-    def handle(self, context: "Context") -> None:
+    def handle(self, context: "StateContext") -> None:
         pass
 
 
 class ConcreteStateA(State):
     """구체적인 상태 A"""
 
-    def handle(self, context: "Context") -> None:
+    def handle(self, context: "StateContext") -> None:
         print("State A handling")
         context.state = ConcreteStateB()
 
@@ -655,7 +661,7 @@ class ConcreteStateA(State):
 class ConcreteStateB(State):
     """구체적인 상태 B"""
 
-    def handle(self, context: "Context") -> None:
+    def handle(self, context: "StateContext") -> None:
         print("State B handling")
         context.state = ConcreteStateA()
 

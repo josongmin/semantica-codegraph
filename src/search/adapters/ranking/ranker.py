@@ -2,7 +2,7 @@
 
 import logging
 
-from ...core.models import Candidate
+from src.core.models import Candidate
 
 logger = logging.getLogger(__name__)
 

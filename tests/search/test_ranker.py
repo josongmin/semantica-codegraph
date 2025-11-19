@@ -2,7 +2,7 @@
 
 
 from src.core.models import Candidate
-from src.search.ranking.ranker import Ranker
+from src.search.adapters.ranking.ranker import Ranker
 
 
 def test_ranker_basic():

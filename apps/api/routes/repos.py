@@ -1,6 +1,5 @@
 """저장소 관리 API"""
 
-
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
@@ -12,6 +11,7 @@ bootstrap = create_bootstrap()
 
 class IndexRequest(BaseModel):
     """인덱싱 요청"""
+
     repo_path: str
     repo_id: str | None = None
     name: str | None = None
@@ -19,6 +19,7 @@ class IndexRequest(BaseModel):
 
 class IndexResponse(BaseModel):
     """인덱싱 응답"""
+
     repo_id: str
     status: str
     nodes_count: int
@@ -28,6 +29,7 @@ class IndexResponse(BaseModel):
 
 class RepoResponse(BaseModel):
     """저장소 정보 응답"""
+
     repo_id: str
     name: str
     root_path: str
@@ -52,7 +54,8 @@ async def index_repository(
     백그라운드로 실행되며 즉시 응답 반환
     """
     try:
-        result = bootstrap.pipeline.index_repository(
+        # ✅ async 버전 사용 (event loop 충돌 방지)
+        result = await bootstrap.pipeline.index_repository_async(
             root_path=request.repo_path,
             repo_id=request.repo_id,
             name=request.name,
@@ -61,9 +64,9 @@ async def index_repository(
         return IndexResponse(
             repo_id=result.repo_id,
             status="completed",
-            nodes_count=result.nodes_count,
-            edges_count=result.edges_count,
-            chunks_count=result.chunks_count,
+            nodes_count=result.total_nodes,
+            edges_count=result.total_edges,
+            chunks_count=result.total_chunks,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -149,4 +152,3 @@ async def get_indexing_status(repo_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-

@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock
 
 from src.core.models import CodeNode
-from src.search.graph.postgres_graph_adapter import PostgresGraphSearch
+from src.search.adapters.graph.postgres_graph_adapter import PostgresGraphSearch
 
 
 def test_graph_search_get_node():

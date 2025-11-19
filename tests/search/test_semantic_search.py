@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock
 
 from src.core.models import ChunkResult
-from src.search.semantic.pgvector_adapter import PgVectorSemanticSearch
+from src.search.adapters.semantic.pgvector_adapter import PgVectorSemanticSearch
 
 
 def test_semantic_search_embed_text():

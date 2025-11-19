@@ -210,7 +210,7 @@ class Bootstrap:
     def hybrid_retriever(self):
         """하이브리드 리트리버"""
         if self._hybrid_retriever is None:
-            from ..search.retriever.hybrid_retriever import HybridRetriever
+            from ..search.adapters.retriever.hybrid_retriever import HybridRetriever
             self._hybrid_retriever = HybridRetriever(
                 lexical_search=self.lexical_search,
                 semantic_search=self.semantic_search,
@@ -225,7 +225,7 @@ class Bootstrap:
     def ranker(self):
         """랭커"""
         if self._ranker is None:
-            from ..search.ranking.ranker import Ranker
+            from ..search.adapters.ranking.ranker import Ranker
             self._ranker = Ranker()
         return self._ranker
 

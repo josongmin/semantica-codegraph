@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.core.models import Candidate, ChunkResult, LocationContext
-from src.search.retriever.hybrid_retriever import HybridRetriever
+from src.search.adapters.retriever.hybrid_retriever import HybridRetriever
 
 
 @pytest.fixture

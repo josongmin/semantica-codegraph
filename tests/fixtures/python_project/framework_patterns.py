@@ -632,3 +632,6 @@ class QueryBuilder:
             parts.append(f"LIMIT {self._limit}")
         return " ".join(parts)
 
+
+
+

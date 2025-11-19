@@ -46,6 +46,17 @@ class Config:
     parallel_indexing_enabled: bool = True  # 인덱싱 병렬화 활성화
     max_workers: int = 8  # 병렬 처리 워커 수 (0이면 CPU 코어 수)
 
+    # 검색 결과 fetch 비율 (k에 곱해서 각 백엔드에서 가져올 개수)
+    lexical_fetch_multiplier: float = 0.5  # Lexical 검색에서 k * 0.5개 가져오기
+    semantic_fetch_multiplier: float = 0.7  # Semantic 검색에서 k * 0.7개 가져오기
+    graph_fetch_multiplier: float = 1.0  # Graph 검색에서 k * 1.0개 가져오기
+    fuzzy_fetch_multiplier: float = 1.0  # Fuzzy 검색에서 k * 1.0개 가져오기
+
+    # 점수 정규화 설정
+    enable_score_normalization: bool = True  # 점수 정규화 활성화 여부
+    lexical_score_max: float = 10.0  # Lexical(BM25) 점수 최대값 (정규화용)
+    fuzzy_score_max: float = 1.0  # Fuzzy 점수 최대값 (정규화용)
+
     @classmethod
     def from_env(cls) -> "Config":
         """환경변수에서 설정 로드 (.env 파일 자동 로드)"""
@@ -91,4 +102,12 @@ class Config:
             parallel_indexing_enabled=os.getenv("PARALLEL_INDEXING_ENABLED", "true").lower()
             == "true",
             max_workers=int(os.getenv("MAX_WORKERS", "8")),
+            lexical_fetch_multiplier=float(os.getenv("LEXICAL_FETCH_MULTIPLIER", "0.5")),
+            semantic_fetch_multiplier=float(os.getenv("SEMANTIC_FETCH_MULTIPLIER", "0.7")),
+            graph_fetch_multiplier=float(os.getenv("GRAPH_FETCH_MULTIPLIER", "1.0")),
+            fuzzy_fetch_multiplier=float(os.getenv("FUZZY_FETCH_MULTIPLIER", "1.0")),
+            enable_score_normalization=os.getenv("ENABLE_SCORE_NORMALIZATION", "true").lower()
+            == "true",
+            lexical_score_max=float(os.getenv("LEXICAL_SCORE_MAX", "10.0")),
+            fuzzy_score_max=float(os.getenv("FUZZY_SCORE_MAX", "1.0")),
         )

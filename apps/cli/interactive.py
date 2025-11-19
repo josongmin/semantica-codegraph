@@ -2,8 +2,8 @@
 
 import sys
 
+from apps.cli.app2 import SemanticaApp
 from src.core.bootstrap import create_bootstrap
-from apps.cli.app import SemanticaApp
 
 
 def run_interactive() -> None:
@@ -12,6 +12,7 @@ def run_interactive() -> None:
         bootstrap = create_bootstrap()
     except Exception as e:
         from rich.console import Console
+
         console = Console()
         console.print("[bold red]초기화 실패[/bold red]")
         console.print(f"[red]{str(e)}[/red]")
@@ -21,4 +22,3 @@ def run_interactive() -> None:
     # Textual 앱 실행
     app = SemanticaApp(bootstrap)
     app.run()
-

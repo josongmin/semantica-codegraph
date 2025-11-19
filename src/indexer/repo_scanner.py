@@ -51,11 +51,7 @@ class RepoScanner:
         ".xml": "xml",
     }
 
-    def scan(
-        self,
-        root_path: str,
-        config: RepoConfig | None = None
-    ) -> list[FileMetadata]:
+    def scan(self, root_path: str, config: RepoConfig | None = None) -> list[FileMetadata]:
         """
         저장소 스캔
 
@@ -107,11 +103,7 @@ class RepoScanner:
 
             # FileMetadata 생성
             files.append(
-                FileMetadata(
-                    file_path=rel_path_str,
-                    abs_path=str(file_path),
-                    language=language
-                )
+                FileMetadata(file_path=rel_path_str, abs_path=str(file_path), language=language)
             )
 
         logger.info(f"Found {len(files)} files")
@@ -144,4 +136,3 @@ class RepoScanner:
         """확장자 기반 언어 감지"""
         suffix = file_path.suffix.lower()
         return self.LANGUAGE_EXTENSIONS.get(suffix)
-
