@@ -1,9 +1,50 @@
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 # 기본 타입 정의
 RepoId = str
 Span = tuple[int, int, int, int]  # (start_line, start_col, end_line, end_col)
+
+
+# Semantic Node (노드 수준 요약 + 임베딩)
+@dataclass
+class SemanticNode:
+    """노드 수준 요약 + 임베딩"""
+
+    repo_id: RepoId
+    node_id: str
+    node_type: str  # "symbol" | "route" | "doc" | "issue"
+    summary: str
+    summary_method: str  # "template" | "llm"
+    model: str  # "text-embedding-3-small" | "text-embedding-3-large"
+    embedding: list[float]
+
+    # 선택적 필드
+    doc_type: str | None = None  # node_type='doc'일 때
+    source_table: str | None = None
+    source_id: str | None = None
+    metadata: dict = field(default_factory=dict)
+
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass
+class SemanticSearchResult:
+    """Semantic 검색 결과"""
+
+    repo_id: RepoId
+    node_id: str
+    node_type: str
+    summary: str
+    model: str
+    score: float  # 유사도 점수 (0-1)
+
+    # 메타데이터
+    source_table: str | None = None
+    source_id: str | None = None
+    metadata: dict = field(default_factory=dict)
 
 
 # 1) 파서 → IR 빌더 사이에서 사용하는 Raw 모델들
@@ -79,9 +120,10 @@ class ChunkResult:
 class Candidate:
     repo_id: RepoId
     chunk_id: str
-    features: dict[str, float]  # bm25_score, embedding_score, graph_score, ...
+    features: dict[str, Any]  # bm25_score, embedding_score, graph_score, ...
     file_path: str
     span: Span
+    metadata: dict = field(default_factory=dict)  # 추가 메타데이터 (importance_score, summary_method 등)
 
 
 @dataclass
@@ -146,41 +188,44 @@ class RepoMetadata:
 class RepoProfile:
     """
     저장소 구조 프로파일 (검색 최적화용)
-    
+
     Repo Profiling 단계에서 생성되며, 다음 용도로 사용:
     - 검색 쿼리 재작성 (Intent Router)
     - 파일 경로 기반 재순위화 (HybridRetriever)
     - LLM 컨텍스트 제공
     """
+
     repo_id: RepoId
-    
+
     # 언어 분포
     languages: dict[str, int] = field(default_factory=dict)  # {"python": 15000, "typescript": 3000}
     primary_language: str = "unknown"
-    
+
     # 프레임워크/라이브러리 감지
     framework: str | None = None  # "fastapi", "django", "express", "spring", etc.
     frameworks: list[str] = field(default_factory=list)  # 여러 프레임워크 사용 가능
-    
+
     # API 패턴 (FastAPI, Express 등)
-    api_patterns: list[str] = field(default_factory=list)  # ["@router.post", "@app.get", "express.Router"]
-    
+    api_patterns: list[str] = field(
+        default_factory=list
+    )  # ["@router.post", "@app.get", "express.Router"]
+
     # 주요 디렉토리 분류
     api_directories: list[str] = field(default_factory=list)  # ["apps/api/routes/", "api/"]
     service_directories: list[str] = field(default_factory=list)  # ["src/services/", "services/"]
     model_directories: list[str] = field(default_factory=list)  # ["src/models/", "models/"]
     test_directories: list[str] = field(default_factory=list)  # ["tests/", "test/"]
     config_directories: list[str] = field(default_factory=list)  # ["config/", "settings/"]
-    
+
     # 엔트리포인트
     entry_points: list[str] = field(default_factory=list)  # ["apps/api/main.py", "src/index.ts"]
-    
+
     # 의존성 정보
     dependencies: dict[str, str] = field(default_factory=dict)  # {"fastapi": "0.104.0"}
-    
+
     # 프로젝트 타입 추론
     project_type: str = "unknown"  # "web_api", "library", "cli", "microservice"
-    
+
     # 통계
     total_directories: int = 0
     file_tree: dict = field(default_factory=dict)  # 간략한 디렉토리 구조
@@ -190,12 +235,13 @@ class RepoProfile:
 class FileProfile:
     """
     파일 역할 프로파일 (검색 최적화용)
-    
+
     File Profiling 단계에서 생성되며, 검색 재순위화에 사용
     """
+
     repo_id: RepoId
     file_path: str
-    
+
     # 파일 역할 태그
     is_api_file: bool = False
     is_router: bool = False
@@ -206,17 +252,17 @@ class FileProfile:
     is_config: bool = False
     is_test_file: bool = False
     is_entry_point: bool = False
-    
+
     # API 파일 상세 정보
     api_framework: str | None = None  # "fastapi", "express", "spring"
     api_patterns: list[str] = field(default_factory=list)  # ["@router.post", "@app.get"]
     endpoints: list[dict] = field(default_factory=list)  # [{"method": "POST", "path": "/search"}]
-    
+
     # Import 정보
     imports: list[str] = field(default_factory=list)  # 주요 import 목록
     external_deps: list[str] = field(default_factory=list)  # 외부 라이브러리
     internal_deps: list[str] = field(default_factory=list)  # 내부 모듈
-    
+
     # 통계
     line_count: int = 0
     function_count: int = 0

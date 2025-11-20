@@ -15,26 +15,25 @@ CREATE TABLE IF NOT EXISTS route_index (
     framework TEXT,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW(),
-    
+
     PRIMARY KEY (repo_id, route_id),
     FOREIGN KEY (repo_id) REFERENCES repo_metadata(repo_id) ON DELETE CASCADE
 );
 
 -- 인덱스
-CREATE INDEX IF NOT EXISTS idx_route_method_path 
+CREATE INDEX IF NOT EXISTS idx_route_method_path
 ON route_index(repo_id, http_method, http_path);
 
-CREATE INDEX IF NOT EXISTS idx_route_path_pattern 
+CREATE INDEX IF NOT EXISTS idx_route_path_pattern
 ON route_index(repo_id, http_path);
 
-CREATE INDEX IF NOT EXISTS idx_route_file 
+CREATE INDEX IF NOT EXISTS idx_route_file
 ON route_index(repo_id, file_path);
 
-CREATE INDEX IF NOT EXISTS idx_route_framework 
+CREATE INDEX IF NOT EXISTS idx_route_framework
 ON route_index(repo_id, framework);
 
 COMMENT ON TABLE route_index IS 'API 엔드포인트 인덱스 (FastAPI, Express, Spring 등)';
 COMMENT ON COLUMN route_index.route_id IS '라우트 고유 ID (hash)';
 COMMENT ON COLUMN route_index.handler_symbol_id IS 'code_nodes.id 참조';
 COMMENT ON INDEX idx_route_method_path IS 'HTTP 메서드+경로 검색';
-

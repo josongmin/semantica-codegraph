@@ -262,7 +262,7 @@ class TypeScriptTreeSitterParser(BaseTreeSitterParser):
         """접근 제어자 추출 (public/private/protected)"""
         for child in node.children:
             if child.type in ("public", "private", "protected"):
-                return child.type
+                return str(child.type)
         return "public"  # 기본값
 
     def _extract_extends(self, class_node: Node, source: bytes) -> str | None:

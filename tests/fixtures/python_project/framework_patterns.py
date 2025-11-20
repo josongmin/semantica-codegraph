@@ -217,9 +217,8 @@ class EventBus:
         """이벤트 구독 해제"""
         if event_type in self._handlers and handler in self._handlers[event_type]:
             self._handlers[event_type].remove(handler)
-        if event_type in self._async_handlers:
-            if handler in self._async_handlers[event_type]:
-                self._async_handlers[event_type].remove(handler)
+        if event_type in self._async_handlers and handler in self._async_handlers[event_type]:
+            self._async_handlers[event_type].remove(handler)
 
     def publish(self, event_type: str, data: Any):
         """이벤트 발행"""

@@ -121,7 +121,9 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
         if not params_node:
             return []
 
-        params = []
+        from typing import Any
+
+        params: list[dict[str, Any]] = []
         for child in params_node.children:
             if child.type == "identifier":
                 params.append(
@@ -190,7 +192,14 @@ class PythonTreeSitterParser(BaseTreeSitterParser):
                 if string_node:
                     docstring = self._get_node_text(string_node, source)
                     # 따옴표 제거
-                    docstring = docstring.strip('"""').strip("'''").strip('"').strip("'")
+                    if docstring.startswith('"""') or docstring.startswith("'''"):
+                        docstring = docstring[3:]
+                    elif docstring.startswith('"') or docstring.startswith("'"):
+                        docstring = docstring[1:]
+                    if docstring.endswith('"""') or docstring.endswith("'''"):
+                        docstring = docstring[:-3]
+                    elif docstring.endswith('"') or docstring.endswith("'"):
+                        docstring = docstring[:-1]
                     return docstring.strip()
                 break
 

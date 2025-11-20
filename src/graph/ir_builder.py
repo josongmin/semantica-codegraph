@@ -288,9 +288,10 @@ class IRBuilder:
                 return False
 
             # 같은 라인이면 컬럼도 확인
-            if s1_start_line == s1_end_line == s2_start_line == s2_end_line:
-                if s1_end_col < s2_start_col or s2_end_col < s1_start_col:
-                    return False
+            if s1_start_line == s1_end_line == s2_start_line == s2_end_line and (
+                s1_end_col < s2_start_col or s2_end_col < s1_start_col
+            ):
+                return False
 
             return True
 

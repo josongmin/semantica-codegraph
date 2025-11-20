@@ -1,5 +1,6 @@
 """이상한 패턴과 엣지 케이스"""
 
+import copy
 import inspect
 from collections.abc import Callable
 from functools import partial, wraps
@@ -492,9 +493,6 @@ def exception_chain():
 
 
 # 얕은/깊은 복사 패턴
-import copy
-
-
 class CopyableClass:
     """복사 가능한 클래스"""
 

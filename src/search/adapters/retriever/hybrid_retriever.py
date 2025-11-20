@@ -38,6 +38,7 @@ class HybridRetriever:
         chunk_store: ChunkStorePort | None = None,
         config: Config | None = None,
         fusion_strategy: FusionStrategy | None = None,
+        query_log_store=None,  # QueryLogStore (Phase 2)
     ):
         """
         Args:
@@ -56,6 +57,11 @@ class HybridRetriever:
         self.chunk_store = chunk_store
         self.config = config or Config()
         self.fusion = fusion_strategy or WeightedFusion()
+        self.query_log_store = query_log_store  # Phase 2: Query logging
+
+        # Debug/logging 설정
+        self.enable_query_logging = True  # Query logs 활성화
+        self.log_query_embedding = False  # 쿼리 임베딩 저장 (용량 큼)
 
     def retrieve(
         self,
@@ -65,6 +71,7 @@ class HybridRetriever:
         location_ctx: LocationContext | None = None,
         weights: dict[str, float] | None = None,
         parallel: bool = True,
+        query_type: str | None = None,  # Phase 2: QueryClassifier 출력
     ) -> list[Candidate]:
         """
         하이브리드 검색 실행
@@ -77,21 +84,45 @@ class HybridRetriever:
             weights: 각 검색 방식의 가중치
                 예: {"lexical": 0.3, "semantic": 0.5, "graph": 0.2}
             parallel: 병렬 검색 활성화 (기본값: True)
+            query_type: 쿼리 타입 (Phase 2 로깅용)
 
         Returns:
             Candidate 리스트 (중복 제거, 점수 통합)
         """
+        import time
+
         if weights is None:
             weights = {"lexical": 0.25, "semantic": 0.45, "graph": 0.15, "fuzzy": 0.15}
 
         logger.info(f"Hybrid retrieval: {query} (k={k}, parallel={parallel})")
 
+        # Phase 2: 로깅을 위한 시작 시간
+        start_time = time.time()
+
         if parallel and self.config.parallel_search_enabled:
             # 병렬 검색
-            return self._retrieve_parallel(repo_id, query, k, location_ctx, weights)
+            results = self._retrieve_parallel(repo_id, query, k, location_ctx, weights)
         else:
             # 순차 검색 (기존 방식)
-            return self._retrieve_sequential(repo_id, query, k, location_ctx, weights)
+            results = self._retrieve_sequential(repo_id, query, k, location_ctx, weights)
+
+        # Phase 2: Query logging
+        if self.enable_query_logging and self.query_log_store:
+            try:
+                latency_ms = int((time.time() - start_time) * 1000)
+                self._log_query(
+                    repo_id=repo_id,
+                    query=query,
+                    query_type=query_type,
+                    k=k,
+                    weights=weights,
+                    results=results,
+                    latency_ms=latency_ms,
+                )
+            except Exception as e:
+                logger.warning(f"Query logging failed: {e}")
+
+        return results
 
     def _retrieve_sequential(
         self,
@@ -102,7 +133,7 @@ class HybridRetriever:
         weights: dict[str, float],
     ) -> list[Candidate]:
         """순차 검색 (기존 방식)"""
-        candidates = {}  # chunk_id -> Candidate
+        candidates: dict[str, Candidate] = {}  # chunk_id -> Candidate
 
         # 1. Lexical 검색
         lexical_results_raw = []
@@ -159,7 +190,8 @@ class HybridRetriever:
                     ]
                     for neighbor_node, edge_type, depth in graph_neighbors:
                         # Edge 타입별 가중치 적용
-                        edge_weight = self.config.graph_edge_weights.get(edge_type, 0.5)
+                        edge_weights = self.config.graph_edge_weights or {}
+                        edge_weight = edge_weights.get(edge_type, 0.5)
 
                         # Depth decay 적용 (깊이가 깊어질수록 점수 감소)
                         depth_decay = self.config.graph_depth_decay ** (depth - 1)
@@ -349,10 +381,10 @@ class HybridRetriever:
         candidate_list = list(candidates.values())
 
         # 7. Weighted Fusion 적용 (점수 결합 및 정렬)
-        result = self.fusion.fuse_and_sort(candidate_list, weights, k=k)
+        fused_results: list[Candidate] = self.fusion.fuse_and_sort(candidate_list, weights, k=k)
 
-        logger.info(f"Retrieved {len(result)} candidates")
-        return result
+        logger.info(f"Retrieved {len(fused_results)} candidates")
+        return fused_results
 
     def _result_to_candidate(
         self,
@@ -532,7 +564,7 @@ class HybridRetriever:
             토큰 리스트
         """
         tokens = []
-        stopwords = set(self.config.fuzzy_stopwords)
+        stopwords = set(self.config.fuzzy_stopwords or [])
 
         # 1. 공백으로 분리
         words = query.split()
@@ -609,7 +641,7 @@ class HybridRetriever:
         weights: dict[str, float],
     ) -> list[Candidate]:
         """병렬 검색 (ThreadPoolExecutor 사용)"""
-        candidates = {}  # chunk_id -> Candidate
+        candidates: dict[str, Candidate] = {}  # chunk_id -> Candidate
 
         # ThreadPoolExecutor로 병렬 실행
         with ThreadPoolExecutor(max_workers=4) as executor:
@@ -749,7 +781,8 @@ class HybridRetriever:
             graph_neighbors = neighbors_with_edges[: int(k * self.config.graph_fetch_multiplier)]
             for neighbor_node, edge_type, depth in graph_neighbors:
                 # Edge 타입별 가중치 적용
-                edge_weight = self.config.graph_edge_weights.get(edge_type, 0.5)
+                edge_weights = self.config.graph_edge_weights or {}
+                edge_weight = edge_weights.get(edge_type, 0.5)
 
                 # Depth decay 적용
                 depth_decay = self.config.graph_depth_decay ** (depth - 1)
@@ -782,9 +815,11 @@ class HybridRetriever:
         weight: float,
     ) -> list[Candidate]:
         """Fuzzy 검색 (개선: 모든 청크 반환 + 점수 분배)"""
+        if not self.fuzzy_search:
+            return []
         try:
             query_tokens = self._extract_symbol_tokens(query)
-            candidates_map = {}  # chunk_id -> Candidate (중복 방지)
+            candidates_map: dict[str, Candidate] = {}  # chunk_id -> Candidate (중복 방지)
 
             for token in query_tokens:
                 if len(token) < self.config.fuzzy_min_token_length:
@@ -883,3 +918,75 @@ class HybridRetriever:
         except Exception as e:
             logger.error(f"Fuzzy search failed: {e}")
             return []
+
+    def _log_query(
+        self,
+        repo_id: RepoId,
+        query: str,
+        query_type: str | None,
+        k: int,
+        weights: dict[str, float],
+        results: list[Candidate],
+        latency_ms: int,
+    ) -> None:
+        """
+        쿼리 로그 저장 (Phase 2)
+
+        Args:
+            repo_id: 저장소 ID
+            query: 쿼리 텍스트
+            query_type: 쿼리 타입
+            k: 요청한 결과 수
+            weights: 사용한 가중치
+            results: 검색 결과
+            latency_ms: 레이턴시
+        """
+        from ...query_log_store import QueryLog
+
+        # Top 10 결과만 로깅 (용량 절약)
+        top_results = []
+        for i, candidate in enumerate(results[:10], 1):
+            top_results.append(
+                {
+                    "rank": i,
+                    "node_id": candidate.chunk_id,
+                    "file_path": candidate.file_path,
+                    "score": candidate.features.get("final_score", 0.0),
+                    "signals": {
+                        k: v
+                        for k, v in candidate.features.items()
+                        if k
+                        in [
+                            "lexical",
+                            "semantic_small_code",
+                            "semantic_small_node",
+                            "semantic_large_node",
+                            "graph",
+                            "fuzzy",
+                        ]
+                    },
+                }
+            )
+
+        # 쿼리 임베딩 (optional)
+        query_embedding = None
+        if self.log_query_embedding:
+            try:
+                query_embedding = self.semantic_search.embed_text(query)
+            except Exception as e:
+                logger.debug(f"Failed to embed query for logging: {e}")
+
+        log = QueryLog(
+            repo_id=repo_id,
+            query_text=query,
+            query_type=query_type,
+            query_embedding=query_embedding,
+            weights=weights,
+            k=k,
+            result_count=len(results),
+            top_results=top_results,
+            latency_ms=latency_ms,
+        )
+
+        self.query_log_store.log_query(log)
+        logger.debug(f"Query logged: {query[:30]}... ({len(results)} results, {latency_ms}ms)")

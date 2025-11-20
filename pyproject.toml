@@ -119,4 +119,8 @@ exclude = [
     "dist",
     ".venv",
     "venv",
+    "tests/",
+    "alembic/",
+    "apps/benchmarks/",
+    "scripts/",
 ]

@@ -156,9 +156,10 @@ class EmbeddingService:
         전략: search_text 우선 (메타 포함), 없으면 코드 + docstring
         """
         # 1. search_text가 있으면 우선 사용 (SearchTextBuilder 출력)
-        if chunk.attrs.get("search_text"):
-            return chunk.attrs["search_text"]
-        
+        search_text = chunk.attrs.get("search_text")
+        if search_text:
+            return str(search_text)
+
         # 2. Fallback: 기존 방식 (코드 + docstring)
         parts = [chunk.text]
 
@@ -194,19 +195,21 @@ class EmbeddingService:
                 # 최대 토큰에 맞게 텍스트 자르기
                 max_chars = MAX_TOKENS_PER_TEXT * 4
                 truncated = text[:max_chars]
-                logger.warning(f"Text truncated from {estimated_tokens} to {MAX_TOKENS_PER_TEXT} tokens")
+                logger.warning(
+                    f"Text truncated from {estimated_tokens} to {MAX_TOKENS_PER_TEXT} tokens"
+                )
                 processed_texts.append(truncated)
             else:
                 processed_texts.append(text)
 
         # 배치 전체 토큰 수 확인 및 분할
         all_vectors = []
-        current_batch = []
+        current_batch: list[str] = []
         current_batch_tokens = 0
 
         for text in processed_texts:
             text_tokens = len(text) // 4
-            
+
             # 현재 배치에 추가하면 제한 초과하는 경우
             if current_batch and (current_batch_tokens + text_tokens > MAX_TOKENS_PER_BATCH):
                 # 현재 배치 처리
@@ -217,11 +220,13 @@ class EmbeddingService:
                     )
                     batch_vectors = [data.embedding for data in response.data]
                     all_vectors.extend(batch_vectors)
-                    logger.debug(f"Mistral embedded {len(current_batch)} texts ({current_batch_tokens} tokens)")
+                    logger.debug(
+                        f"Mistral embedded {len(current_batch)} texts ({current_batch_tokens} tokens)"
+                    )
                 except Exception as e:
                     logger.error(f"Mistral embedding failed: {e}")
                     raise
-                
+
                 # 새 배치 시작
                 current_batch = [text]
                 current_batch_tokens = text_tokens
@@ -238,7 +243,9 @@ class EmbeddingService:
                 )
                 batch_vectors = [data.embedding for data in response.data]
                 all_vectors.extend(batch_vectors)
-                logger.debug(f"Mistral embedded {len(current_batch)} texts ({current_batch_tokens} tokens)")
+                logger.debug(
+                    f"Mistral embedded {len(current_batch)} texts ({current_batch_tokens} tokens)"
+                )
             except Exception as e:
                 logger.error(f"Mistral embedding failed: {e}")
                 raise

@@ -237,7 +237,7 @@ class ScipParser(ParserPort):
                 snapshot = json.loads(result.stdout)
                 for document in snapshot.get("documents", []):
                     if document.get("relative_path") == file_path:
-                        return document
+                        return dict(document)
         except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
             logger.debug(f"Failed to load SCIP snapshot: {e}")
 
@@ -401,7 +401,7 @@ class ScipParser(ParserPort):
         """심볼 정보 조회"""
         for symbol_info in scip_data.get("symbols", []):
             if symbol_info.get("symbol") == symbol:
-                return symbol_info
+                return dict(symbol_info)
         return None
 
     def _scip_range_to_span(self, scip_range: list[int]) -> Span:

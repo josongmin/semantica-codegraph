@@ -256,14 +256,13 @@ def test_cache_refresh(fuzzy_matcher, graph_store, sample_repo_id, sample_nodes)
     fuzzy_matcher.refresh_cache(sample_repo_id)
 
     # 검색
-    results_before = fuzzy_matcher.search_symbols(
-        repo_id=sample_repo_id,
-        query="logout",
-        threshold=0.8,
-        k=10,
-    )
-
     # logout이 없어야 함 (하지만 캐시에 남아있을 수 있음)
+    # results_before = fuzzy_matcher.search_symbols(
+    #     repo_id=sample_repo_id,
+    #     query="logout",
+    #     threshold=0.8,
+    #     k=10,
+    # )
     # assert not any(r.matched_text == "logout" for r in results_before)
 
     # 노드 추가

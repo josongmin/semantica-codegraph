@@ -1,7 +1,7 @@
 """Hybrid Search API 스키마"""
 
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LocationContextModel(BaseModel):

@@ -87,25 +87,73 @@ class Chunker:
 
     def _chunk_node_based(self, nodes: list[CodeNode]) -> list[CodeChunk]:
         """
-        Node 기반 청킹: 1 Node = 1 Chunk
+        Node 기반 청킹: 1 Node = 1 Chunk (병렬 처리)
 
         가장 단순하고 빠른 방식
         """
+        # 병렬 처리 임계값
+        if len(nodes) < 100:
+            # 노드 수가 적으면 순차 처리 (오버헤드 방지)
+            return self._chunk_node_based_sequential(nodes)
+
+        # 병렬 처리
+        from concurrent.futures import ThreadPoolExecutor
+
+        chunks = []
+
+        def process_node(node: CodeNode) -> list[CodeChunk]:
+            """단일 노드 처리 (병렬 실행용)"""
+            # File 노드는 스킵
+            if node.kind == "File":
+                return []
+
+            # 선택적 토큰 검증
+            text_len = len(node.text)
+
+            if self.max_tokens:
+                safe_char_limit = self.max_tokens * 3
+
+                if text_len > safe_char_limit:
+                    token_count = self._count_tokens(node.text)
+                    if token_count > self.max_tokens:
+                        logger.debug(
+                            f"Node {node.name} exceeds max_tokens ({token_count} > {self.max_tokens}), splitting"
+                        )
+                        return self._split_node_by_tokens(node)
+
+            return [self._node_to_chunk(node)]
+
+        # 병렬 실행
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = executor.map(process_node, nodes)
+            for node_chunks in results:
+                chunks.extend(node_chunks)
+
+        return chunks
+
+    def _chunk_node_based_sequential(self, nodes: list[CodeNode]) -> list[CodeChunk]:
+        """순차 처리 버전 (작은 프로젝트용)"""
         chunks = []
 
         for node in nodes:
-            # File 노드는 스킵 (너무 큼)
             if node.kind == "File":
                 continue
 
-            # 토큰 수 검증
-            if self.max_tokens and self._count_tokens(node.text) > self.max_tokens:
-                # 토큰 수 초과 시 분할
-                logger.debug(f"Node {node.name} exceeds max_tokens, splitting into chunks")
-                split_chunks = self._split_node_by_tokens(node)
-                chunks.extend(split_chunks)
-            else:
-                # 기본 청크 생성
+            text_len = len(node.text)
+
+            if self.max_tokens:
+                safe_char_limit = self.max_tokens * 3
+
+                if text_len > safe_char_limit:
+                    token_count = self._count_tokens(node.text)
+                    if token_count > self.max_tokens:
+                        logger.debug(
+                            f"Node {node.name} exceeds max_tokens ({token_count} > {self.max_tokens}), splitting"
+                        )
+                        split_chunks = self._split_node_by_tokens(node)
+                        chunks.extend(split_chunks)
+                        continue
+
                 chunk = self._node_to_chunk(node)
                 chunks.append(chunk)
 

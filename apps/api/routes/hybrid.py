@@ -10,6 +10,7 @@ from src.core.models import LocationContext
 from src.search.adapters.graph.postgres_graph_adapter import PostgresGraphSearch
 from src.search.adapters.retriever.hybrid_retriever import HybridRetriever
 from src.search.adapters.semantic.pgvector_adapter import PgVectorSemanticSearch
+from src.search.query_classifier import QueryClassifier
 
 from ..model.hybrid import (
     CandidateExplainResponse,
@@ -37,6 +38,9 @@ from ..model.hybrid import (
 router = APIRouter()
 bootstrap = create_bootstrap()
 logger = logging.getLogger(__name__)
+
+# Phase 2: Query Classifier
+query_classifier = QueryClassifier()
 
 # 세션별 설정 저장 (메모리 기반, 프로덕션에서는 Redis 등 사용)
 _session_preferences: dict[str, dict] = {}
@@ -282,6 +286,10 @@ async def hybrid_search(request: HybridSearchRequest):
             chunk_store=bootstrap.chunk_store,
         )
 
+        # Phase 2: Query type 분류
+        query_type = query_classifier.classify(request.query)
+        logger.debug(f"Query type: {query_type.value}")
+
         # 검색 실행
         candidates = retriever.retrieve(
             repo_id=repo_id,
@@ -289,6 +297,7 @@ async def hybrid_search(request: HybridSearchRequest):
             k=request.k,
             location_ctx=location_ctx,
             weights=weights,
+            query_type=query_type.value,  # Phase 2: query_type 전달
         )
 
         # 메타데이터 기반 재순위화
@@ -542,7 +551,7 @@ async def search_symbols_direct(
             )
 
         return SymbolSearchResponse(
-            symbol_query=query if not decorator else decorator,
+            symbol_query=decorator if decorator else query,
             candidates=candidates,
         )
 
@@ -618,9 +627,7 @@ async def search_symbols(request: SymbolSearchRequest):
 @router.get("/explain/{candidate_id}", response_model=CandidateExplainResponse)
 async def explain_candidate(
     candidate_id: str = Path(..., description="후보 ID"),
-    chunk_id: str | None = Query(
-        None, description="청크 ID (candidate_id가 chunk-xxx 형식이 아닌 경우 필수)"
-    ),
+    chunk_id: str | None = Query(None, description="청크 ID (candidate_id가 chunk-xxx 형식이 아닌 경우 필수)"),
     repo_id: str | None = Query(None, description="저장소 ID"),
 ):
     """
@@ -758,7 +765,7 @@ async def list_endpoints(
         )
 
         # 파일별 그룹핑
-        by_file = {}
+        by_file: dict[str, list[dict]] = {}
         for route in routes:
             file_path = route["file_path"]
             if file_path not in by_file:

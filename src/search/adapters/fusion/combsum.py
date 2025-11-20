@@ -79,15 +79,14 @@ class CombSumFusion(FusionStrategy):
             return candidates
 
         # 가중치 설정
-        if self.use_weights:
-            if weights is None:
-                # 기본 가중치: 모두 동등하게
-                weights = {
-                    "lexical": 1.0,
-                    "semantic": 1.0,
-                    "graph": 1.0,
-                    "fuzzy": 1.0,
-                }
+        if self.use_weights and weights is None:
+            # 기본 가중치: 모두 동등하게
+            weights = {
+                "lexical": 1.0,
+                "semantic": 1.0,
+                "graph": 1.0,
+                "fuzzy": 1.0,
+            }
 
         # 점수 계산
         for candidate in candidates:

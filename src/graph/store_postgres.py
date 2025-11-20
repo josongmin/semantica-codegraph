@@ -578,17 +578,17 @@ class PostgresGraphStore(GraphStorePort):
             text=row[10],
             attrs=row[11] if row[11] else {},
         )
-    
+
     # ===== Graph Ranking =====
-    
+
     def calculate_node_importance(self, repo_id: RepoId, node_id: str) -> float:
         """
         노드 중요도 점수 계산 (PageRank 스타일)
-        
+
         Args:
             repo_id: 저장소 ID
             node_id: 노드 ID
-        
+
         Returns:
             중요도 점수 (0.0 ~ 1.0)
         """
@@ -604,7 +604,7 @@ class PostgresGraphStore(GraphStorePort):
                     (repo_id, node_id),
                 )
                 in_degree = cur.fetchone()[0]
-                
+
                 # Out-degree (얼마나 많이 호출/참조하는가)
                 cur.execute(
                     """
@@ -614,37 +614,33 @@ class PostgresGraphStore(GraphStorePort):
                     (repo_id, node_id),
                 )
                 out_degree = cur.fetchone()[0]
-                
+
                 # 전체 노드 수
                 cur.execute(
                     "SELECT COUNT(*) FROM code_nodes WHERE repo_id = %s",
                     (repo_id,),
                 )
                 total_nodes = cur.fetchone()[0]
-                
+
                 if total_nodes == 0:
                     return 0.0
-                
-                # Hub score: (in + out) / total_nodes
-                # 0~1 범위로 정규화
-                hub_score = (in_degree + out_degree) / (2 * total_nodes)
-                
+
                 # In-degree 가중치 (호출되는 것이 더 중요)
                 importance = (in_degree * 0.7 + out_degree * 0.3) / max(total_nodes * 0.1, 1)
-                
+
                 # 0~1 범위로 클리핑
-                return min(importance, 1.0)
+                return float(min(importance, 1.0))
         finally:
             self._put_connection(conn)
-    
+
     def update_all_node_importance(self, repo_id: RepoId, batch_size: int = 100) -> int:
         """
         저장소의 모든 노드 중요도 계산 및 업데이트
-        
+
         Args:
             repo_id: 저장소 ID
             batch_size: 배치 크기
-        
+
         Returns:
             업데이트된 노드 수
         """
@@ -657,15 +653,15 @@ class PostgresGraphStore(GraphStorePort):
                     (repo_id,),
                 )
                 node_ids = [row[0] for row in cur.fetchall()]
-                
+
                 logger.info(f"Calculating importance for {len(node_ids)} nodes...")
-                
+
                 # 배치로 업데이트
                 updates = []
                 for i, node_id in enumerate(node_ids):
                     importance = self.calculate_node_importance(repo_id, node_id)
                     updates.append((importance, repo_id, node_id))
-                    
+
                     # 배치 실행
                     if len(updates) >= batch_size or i == len(node_ids) - 1:
                         execute_batch(
@@ -679,22 +675,24 @@ class PostgresGraphStore(GraphStorePort):
                             page_size=batch_size,
                         )
                         conn.commit()
-                        
-                        logger.info(f"Updated importance for {len(updates)} nodes ({i+1}/{len(node_ids)})")
+
+                        logger.info(
+                            f"Updated importance for {len(updates)} nodes ({i+1}/{len(node_ids)})"
+                        )
                         updates = []
-                
+
                 return len(node_ids)
         finally:
             self._put_connection(conn)
-    
+
     def get_top_important_nodes(self, repo_id: RepoId, k: int = 20) -> list[tuple[CodeNode, float]]:
         """
         중요도 높은 노드 조회
-        
+
         Args:
             repo_id: 저장소 ID
             k: 반환할 노드 수
-        
+
         Returns:
             (CodeNode, importance_score) 리스트
         """
@@ -713,13 +711,13 @@ class PostgresGraphStore(GraphStorePort):
                     """,
                     (repo_id, k),
                 )
-                
+
                 results = []
                 for row in cur.fetchall():
                     node = self._row_to_node(row[:12])
                     importance = row[12]
                     results.append((node, importance))
-                
+
                 return results
         finally:
             self._put_connection(conn)

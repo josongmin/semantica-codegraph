@@ -72,7 +72,8 @@ class ZoektAdapter(LexicalSearchPort):
 
             with urlopen(request, timeout=self.timeout) as response:
                 response_data = response.read().decode("utf-8")
-                return json.loads(response_data) if response_data else {}
+                result = json.loads(response_data) if response_data else {}
+                return dict(result) if isinstance(result, dict) else {}
 
         except HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else ""

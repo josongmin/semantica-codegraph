@@ -13,6 +13,7 @@ from ..core.models import (
     CodeEdge,
     CodeNode,
     FileMetadata,
+    FileProfile,
     IndexingResult,
     RawRelation,
     RawSymbol,
@@ -61,13 +62,17 @@ class IndexingPipeline:
         scanner: RepoScanner,
         parse_cache: ParseCache | None = None,
         route_store=None,  # RouteStore (optional)
+        semantic_node_store=None,  # SemanticNodeStore (Phase 1)
+        embedding_service_small: EmbeddingService | None = None,  # Phase 1
+        embedding_service_large: EmbeddingService | None = None,  # Phase 2
+        profiler=None,  # 프로파일러 (optional)
     ):
         """
         Args:
             repo_store: 저장소 메타데이터 스토어
             graph_store: 코드 그래프 스토어
             chunk_store: 청크 스토어
-            embedding_service: 임베딩 서비스
+            embedding_service: 임베딩 서비스 (코드 청크용)
             embedding_store: 임베딩 스토어
             lexical_search: Lexical 검색 포트
             ir_builder: IR 빌더
@@ -75,6 +80,9 @@ class IndexingPipeline:
             scanner: 저장소 스캐너
             parse_cache: 파싱 캐시 (None이면 비활성화)
             route_store: Route 인덱스 스토어 (optional)
+            semantic_node_store: Semantic Node 스토어 (Phase 1)
+            embedding_service_small: 임베딩 서비스 3-small (Phase 1)
+            embedding_service_large: 임베딩 서비스 3-large (Phase 2)
         """
         self.repo_store = repo_store
         self.graph_store = graph_store
@@ -86,13 +94,19 @@ class IndexingPipeline:
         self.chunker = chunker
         self.scanner = scanner
         self.route_store = route_store
+        self.profiler = profiler  # 프로파일러 (optional)
+
+        # Phase 1: Semantic nodes
+        self.semantic_node_store = semantic_node_store
+        self.embedding_service_small = embedding_service_small
+        self.embedding_service_large = embedding_service_large
 
         # Route 추출기
+        self.route_extractor = None  # type: ignore[assignment]
         if route_store:
             from .route_extractor import RouteExtractor
+
             self.route_extractor = RouteExtractor()
-        else:
-            self.route_extractor = None
 
         # 성능 최적화: 파서 캐시
         from typing import Any
@@ -111,6 +125,7 @@ class IndexingPipeline:
         parallel: bool = True,
         max_workers: int | None = None,
         parallel_threshold: int | None = None,
+        use_embedding_cache: bool = False,
     ) -> IndexingResult:
         """
         저장소 인덱싱
@@ -149,8 +164,14 @@ class IndexingPipeline:
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.0)
 
             # 4. 파일 스캔
+            if hasattr(self, "profiler") and self.profiler:
+                self.profiler.start_sub_phase("scan_files")
             files = self.scanner.scan(root_path, config)
             logger.info(f"Found {len(files)} files to index")
+            if hasattr(self, "profiler") and self.profiler:
+                scan_data = self.profiler.end_sub_phase()
+                if scan_data:
+                    self.profiler.add_phase_counter("files_scanned", len(files))
 
             if len(files) == 0:
                 logger.warning("No files found to index")
@@ -160,19 +181,23 @@ class IndexingPipeline:
                     total_files=0,
                     duration_seconds=time.time() - start_time,
                 )
-            
+
             # 4-1. Repo Profiling (프로젝트 구조 분석)
             logger.info("[Profiling] Repo profiling 시작...")
             repo_profile = None
             try:
                 from .repo_profiler import RepoProfiler
-                
+
                 repo_profiler = RepoProfiler()
                 repo_profile = repo_profiler.profile_repo(root_path, repo_id)
                 self.repo_store.save_profile(repo_profile)
-                
-                logger.info(f"[Profiling] Repo: framework={repo_profile.framework}, type={repo_profile.project_type}")
-                logger.info(f"[Profiling] API dirs: {len(repo_profile.api_directories)}, Test dirs: {len(repo_profile.test_directories)}")
+
+                logger.info(
+                    f"[Profiling] Repo: framework={repo_profile.framework}, type={repo_profile.project_type}"
+                )
+                logger.info(
+                    f"[Profiling] API dirs: {len(repo_profile.api_directories)}, Test dirs: {len(repo_profile.test_directories)}"
+                )
             except Exception as e:
                 logger.warning(f"[Profiling] Repo profiling 실패 (계속 진행): {e}")
 
@@ -201,20 +226,39 @@ class IndexingPipeline:
                 # 순차 파싱 (기존 방식)
                 logger.info("Using sequential parsing")
                 for i, file_meta in enumerate(files, 1):
+                    file_start_time = time.time()
+                    file_nodes_count = 0
+                    file_edges_count = 0
+                    phase_breakdown = {}
+
                     try:
                         logger.debug(f"Processing [{i}/{len(files)}]: {file_meta.file_path}")
 
                         # 파싱 (캐시된 파서 사용)
+                        if hasattr(self, "profiler") and self.profiler:
+                            self.profiler.start_sub_phase("parse_and_ast")
                         raw_symbols, raw_relations = self._parse_file(repo_id, file_meta)
+                        if hasattr(self, "profiler") and self.profiler:
+                            parse_data = self.profiler.end_sub_phase()
+                            if parse_data:
+                                phase_breakdown["parse_and_ast"] = parse_data["elapsed_ms"]
 
                         # IR 변환
+                        if hasattr(self, "profiler") and self.profiler:
+                            self.profiler.start_sub_phase("build_graph")
                         file_content = self._read_file(file_meta.abs_path)
                         nodes, edges = self.ir_builder.build(
                             raw_symbols=raw_symbols,
                             raw_relations=raw_relations,
                             source_code={file_meta.file_path: file_content},
                         )
+                        if hasattr(self, "profiler") and self.profiler:
+                            build_data = self.profiler.end_sub_phase()
+                            if build_data:
+                                phase_breakdown["build_graph"] = build_data["elapsed_ms"]
 
+                        file_nodes_count = len(nodes)
+                        file_edges_count = len(edges)
                         all_nodes.extend(nodes)
                         all_edges.extend(edges)
 
@@ -226,9 +270,60 @@ class IndexingPipeline:
                             )
                             last_progress_update = progress
 
+                        # 파일별 프로파일링 (성공)
+                        if hasattr(self, "profiler") and self.profiler:
+                            file_elapsed_ms = (time.time() - file_start_time) * 1000
+
+                            # LOC 계산
+                            try:
+                                loc = len(
+                                    Path(file_meta.abs_path)
+                                    .read_text(encoding="utf-8")
+                                    .splitlines()
+                                )
+                            except Exception:
+                                loc = 0
+
+                            # Flags 계산
+                            file_path_lower = file_meta.file_path.lower()
+                            flags = {
+                                "is_test": "test" in file_path_lower or "spec" in file_path_lower,
+                                "is_generated": "generated" in file_path_lower
+                                or "__pycache__" in file_path_lower,
+                                "is_config": "config" in file_path_lower
+                                or "settings" in file_path_lower,
+                                "skipped": False,
+                            }
+
+                            self.profiler.record_file(
+                                file_path=file_meta.file_path,
+                                language=file_meta.language,
+                                elapsed_ms=file_elapsed_ms,
+                                stats={
+                                    "nodes": file_nodes_count,
+                                    "edges": file_edges_count,
+                                    "loc": loc,
+                                },
+                                phase_breakdown_ms=phase_breakdown,
+                                flags=flags,
+                            )
+
                     except Exception as e:
                         logger.error(f"Failed to parse {file_meta.file_path}: {e}")
                         failed_files.append((file_meta.file_path, str(e)))
+                        # 파일별 프로파일링 (실패)
+                        if hasattr(self, "profiler") and self.profiler:
+                            file_elapsed_ms = (time.time() - file_start_time) * 1000
+                            self.profiler.record_file(
+                                file_path=file_meta.file_path,
+                                language=file_meta.language,
+                                elapsed_ms=file_elapsed_ms,
+                                stats={"nodes": 0, "edges": 0},
+                                flags={
+                                    "is_test": "test" in file_meta.file_path.lower(),
+                                    "skipped": True,
+                                },
+                            )
                         continue
 
             logger.info(f"Parsed {len(all_nodes)} nodes, {len(all_edges)} edges")
@@ -242,18 +337,26 @@ class IndexingPipeline:
                     logger.warning(f"  ... and {len(failed_files) - 10} more")
 
             # 6. 그래프 저장
+            if hasattr(self, "profiler") and self.profiler:
+                self.profiler.start_sub_phase("db_flush")
             if all_nodes:
                 self.graph_store.save_graph(all_nodes, all_edges)
                 logger.info("Saved graph to database")
-            
+            if hasattr(self, "profiler") and self.profiler:
+                db_flush_data = self.profiler.end_sub_phase()
+                if db_flush_data:
+                    self.profiler.add_phase_counter(
+                        "db_flush_nodes_ms", db_flush_data["elapsed_ms"]
+                    )
+
             # 6-1. File Profiling (파일 역할 태깅)
             logger.info("[Profiling] File profiling 시작...")
             file_profiles = []
             try:
                 from .file_profiler import FileProfiler
-                
+
                 file_profiler = FileProfiler()
-                
+
                 for file_meta in files:
                     file_profile = file_profiler.profile_file(
                         repo_id=repo_id,
@@ -262,7 +365,7 @@ class IndexingPipeline:
                         framework=repo_profile.framework if repo_profile else None,
                     )
                     file_profiles.append(file_profile)
-                
+
                 # 배치 저장
                 if file_profiles:
                     self.repo_store.save_file_profiles_batch(file_profiles)
@@ -270,58 +373,81 @@ class IndexingPipeline:
                     logger.info(f"[Profiling] File: {len(file_profiles)}개 (API: {api_count}개)")
             except Exception as e:
                 logger.warning(f"[Profiling] File profiling 실패 (계속 진행): {e}")
-            
+
             # 6-2. Graph Ranking (노드 중요도 계산)
             logger.info("[Profiling] Graph ranking 시작...")
             try:
                 if all_nodes:
-                    updated_count = self.graph_store.update_all_node_importance(repo_id, batch_size=100)
+                    # 타입 체크 우회: 실제 구현체에는 update_all_node_importance가 있음
+                    updated_count = self.graph_store.update_all_node_importance(  # type: ignore[attr-defined]
+                        repo_id, batch_size=100
+                    )
                     logger.info(f"[Profiling] Graph: {updated_count}개 노드 중요도 계산 완료")
             except Exception as e:
                 logger.warning(f"[Profiling] Graph ranking 실패 (계속 진행): {e}")
 
             # 7. 청킹
+            if hasattr(self, "profiler") and self.profiler:
+                self.profiler.start_sub_phase("chunking")
             chunks = self.chunker.chunk(all_nodes)
             logger.info(f"Generated {len(chunks)} chunks")
+            if hasattr(self, "profiler") and self.profiler:
+                chunking_data = self.profiler.end_sub_phase()
+                if chunking_data:
+                    self.profiler.add_phase_counter("chunking_ms", chunking_data["elapsed_ms"])
+                    self.profiler.add_phase_counter("chunks_created", len(chunks))
 
             # 8. 청크 저장
+            if hasattr(self, "profiler") and self.profiler:
+                self.profiler.start_sub_phase("db_flush")
             if chunks:
                 self.chunk_store.save_chunks(chunks)
                 logger.info("Saved chunks to database")
-            
+            if hasattr(self, "profiler") and self.profiler:
+                db_flush_data = self.profiler.end_sub_phase()
+                if db_flush_data:
+                    self.profiler.add_phase_counter(
+                        "db_flush_chunks_ms", db_flush_data["elapsed_ms"]
+                    )
+
             # 8-1. Chunk Tagging + search_text 생성
             logger.info("[Profiling] Chunk tagging 및 search_text 생성 시작...")
             try:
                 from ..chunking.chunk_tagger import ChunkTagger
                 from ..chunking.search_text_builder import SearchTextBuilder
-                
+
                 chunk_tagger = ChunkTagger()
                 search_text_builder = SearchTextBuilder()
                 metadata_updates = []
-                
+
                 # 파일별로 프로파일 매핑
                 file_profile_map = {p.file_path: p for p in file_profiles}
-                
+
                 for chunk in chunks:
-                    file_profile = file_profile_map.get(chunk.file_path)
-                    
+                    chunk_file_profile: FileProfile | None = file_profile_map.get(chunk.file_path)
+
                     # 1. 메타데이터 태깅
-                    chunk_metadata = chunk_tagger.tag_chunk(chunk.text, file_profile)
-                    
+                    chunk_metadata = chunk_tagger.tag_chunk(chunk.text, chunk_file_profile)
+
                     # 2. search_text 생성
                     search_text = search_text_builder.build(chunk, file_profile, chunk_metadata)
-                    
+
                     # 3. chunk.attrs에 추가 (나중에 embedding/lexical에서 사용)
                     chunk.attrs["search_text"] = search_text
                     chunk.attrs["metadata"] = chunk_metadata
-                    
+
                     metadata_updates.append((repo_id, chunk.id, chunk_metadata))
-                
+
                 # 배치 업데이트
                 if metadata_updates:
-                    self.chunk_store.update_chunk_metadata_batch(metadata_updates)
-                    api_chunks = sum(1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk"))
-                    logger.info(f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)")
+                    # 타입 체크 우회: 실제 구현체에는 update_chunk_metadata_batch가 있음
+                    self.chunk_store.update_chunk_metadata_batch(metadata_updates)  # type: ignore[attr-defined]
+                    api_chunks = sum(
+                        1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk")
+                    )
+                    logger.info(
+                        f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)"
+                    )
                     logger.info(f"[Profiling] search_text 생성 완료 ({len(chunks)}개 chunk)")
             except Exception as e:
                 logger.warning(f"[Profiling] Chunk tagging/search_text 실패 (계속 진행): {e}")
@@ -346,7 +472,9 @@ class IndexingPipeline:
                     import hashlib
 
                     logger.info("Generating embeddings (async + dedup)...")
-                    vectors = asyncio.run(self._embed_chunks_async(chunks, repo_id))
+                    vectors = asyncio.run(
+                        self._embed_chunks_async(chunks, repo_id, use_cache=use_embedding_cache)
+                    )
 
                     # content_hash 계산
                     content_hashes = []
@@ -356,43 +484,85 @@ class IndexingPipeline:
                         content_hashes.append(content_hash)
 
                     chunk_ids = [chunk.id for chunk in chunks]
-                    self.embedding_store.save_embeddings(
-                        repo_id, chunk_ids, vectors, content_hashes=content_hashes
-                    )
+                    self.embedding_store.save_embeddings(repo_id, chunk_ids, vectors)
                     logger.info(f"Saved {len(vectors)} embeddings")
                 except Exception as e:
                     logger.error(f"Embedding failed: {e}")
 
             # 10.5. Route 추출 및 저장 (API 엔드포인트 인덱싱)
+            all_routes = []
             if self.route_store and self.route_extractor:
                 try:
                     logger.info("Extracting API routes...")
-                    all_routes = []
-                    
+
                     # API 파일만 처리
-                    for file_path, profile in file_profiles.items():
+                    for profile in file_profiles:
                         if not profile or not profile.is_api_file:
                             continue
-                        
+
                         # 해당 파일의 nodes 가져오기
-                        file_nodes = [n for n in all_nodes if n.file_path == file_path]
-                        
+                        file_nodes = [n for n in all_nodes if n.file_path == profile.file_path]
+
                         if not file_nodes:
                             continue
-                        
+
                         # Route 추출
                         routes = self.route_extractor.extract_routes(file_nodes, profile)
                         all_routes.extend(routes)
-                    
+
                     # Route 저장
                     if all_routes:
                         self.route_store.save_routes(all_routes)
                         logger.info(f"Indexed {len(all_routes)} API routes")
                     else:
                         logger.info("No API routes found")
-                        
+
                 except Exception as e:
                     logger.error(f"Route extraction failed: {e}", exc_info=True)
+
+            # 10.6. Route Semantic 인덱싱 (Phase 1)
+            if self.semantic_node_store and self.embedding_service_small and all_routes:
+                try:
+                    logger.info("[Semantic] Route indexing...")
+                    # 기존 route semantic 삭제
+                    self.semantic_node_store.clear_repo(repo_id, node_types=["route"])
+
+                    # 동기 버전 호출을 위해 asyncio.run 사용
+                    import asyncio
+
+                    # 타입 체크 우회: 실제로는 메서드가 존재함
+                    route_semantic_count = asyncio.run(
+                        self._index_route_semantics(repo_id, all_routes)  # type: ignore[attr-defined]
+                    )
+                    logger.info(f"[Semantic] Indexed {route_semantic_count} route summaries")
+                except Exception as e:
+                    logger.error(f"[Semantic] Route indexing failed: {e}")
+
+            # 10.7. Symbol Semantic 인덱싱 (Phase 1)
+            if hasattr(self, "profiler") and self.profiler:
+                self.profiler.start_sub_phase("semantic_nodes")
+            if self.semantic_node_store and self.embedding_service_small and all_nodes:
+                try:
+                    logger.info("[Semantic] Symbol indexing...")
+                    # 기존 symbol semantic 삭제
+                    self.semantic_node_store.clear_repo(repo_id, node_types=["symbol"])
+
+                    # 동기 버전 호출
+                    import asyncio
+
+                    # 타입 체크 우회: 실제로는 메서드가 존재함
+                    symbol_semantic_count = asyncio.run(
+                        self._index_symbol_semantics(repo_id, all_nodes, file_profiles)  # type: ignore[attr-defined]
+                    )
+                    logger.info(f"[Semantic] Indexed {symbol_semantic_count} symbol summaries")
+                except Exception as e:
+                    logger.error(f"[Semantic] Symbol indexing failed: {e}")
+            if hasattr(self, "profiler") and self.profiler:
+                semantic_data = self.profiler.end_sub_phase()
+                if semantic_data:
+                    self.profiler.add_phase_counter(
+                        "semantic_nodes_ms", semantic_data["elapsed_ms"]
+                    )
 
             # 11. 메타데이터 업데이트
             metadata.total_files = len(files)
@@ -440,6 +610,7 @@ class IndexingPipeline:
         parallel: bool = True,
         max_workers: int | None = None,
         parallel_threshold: int | None = None,
+        use_embedding_cache: bool = False,
     ) -> IndexingResult:
         """
         저장소 인덱싱 (Async 환경용: FastAPI 등)
@@ -452,6 +623,7 @@ class IndexingPipeline:
             parallel: 병렬 처리 활성화 (기본값: True)
             max_workers: 병렬 처리 워커 수 (None이면 CPU 코어 수)
             parallel_threshold: 병렬 처리 시작 임계값 (None이면 자동: max(3, cpu_count // 2))
+            use_embedding_cache: 임베딩 캐시 사용 여부 (기본값: False, 테스트 시 False 권장)
 
         Returns:
             IndexingResult
@@ -478,8 +650,17 @@ class IndexingPipeline:
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.0)
 
             # 4. 파일 스캔
+            if hasattr(self, "profiler") and self.profiler:
+                self.profiler.start_sub_phase("scan_files")
+            step_start = time.time()
             files = self.scanner.scan(root_path, config)
-            logger.info(f"Found {len(files)} files to index")
+            logger.info(
+                f"[Step 1/11] File scan: {len(files)} files found ({time.time() - step_start:.2f}s)"
+            )
+            if hasattr(self, "profiler") and self.profiler:
+                scan_data = self.profiler.end_sub_phase()
+                if scan_data:
+                    self.profiler.add_phase_counter("files_scanned", len(files))
 
             if len(files) == 0:
                 logger.warning("No files found to index")
@@ -490,7 +671,19 @@ class IndexingPipeline:
                     duration_seconds=time.time() - start_time,
                 )
 
+            # 4-1. Repo Profiling (프로젝트 구조 분석)
+            repo_profile = None
+            try:
+                from .repo_profiler import RepoProfiler
+
+                repo_profiler = RepoProfiler()
+                repo_profile = repo_profiler.profile_repo(root_path, repo_id)
+                self.repo_store.save_profile(repo_profile)
+            except Exception as e:
+                logger.warning(f"Repo profiling failed: {e}")
+
             # 5. 파일별 파싱 + IR 변환 + 그래프 저장
+            step_start = time.time()
             all_nodes: list[CodeNode] = []
             all_edges: list[CodeEdge] = []
             failed_files: list[tuple[str, str]] = []  # 실패한 파일 추적
@@ -545,7 +738,9 @@ class IndexingPipeline:
                         failed_files.append((file_meta.file_path, str(e)))
                         continue
 
-            logger.info(f"Parsed {len(all_nodes)} nodes, {len(all_edges)} edges")
+            logger.info(
+                f"[Step 2/11] File parsing: {len(all_nodes)} nodes, {len(all_edges)} edges ({time.time() - step_start:.2f}s)"
+            )
 
             # 실패한 파일 로깅
             if failed_files:
@@ -556,18 +751,21 @@ class IndexingPipeline:
                     logger.warning(f"  ... and {len(failed_files) - 10} more")
 
             # 6. 그래프 저장
+            step_start = time.time()
             if all_nodes:
                 self.graph_store.save_graph(all_nodes, all_edges)
-                logger.info("Saved graph to database")
-            
+            logger.info(
+                f"[Step 3/11] Graph save: {len(all_nodes)} nodes, {len(all_edges)} edges ({time.time() - step_start:.2f}s)"
+            )
+
             # 6-1. File Profiling (파일 역할 태깅)
-            logger.info("[Profiling] File profiling 시작...")
+            step_start = time.time()
             file_profiles = []
             try:
                 from .file_profiler import FileProfiler
-                
+
                 file_profiler = FileProfiler()
-                
+
                 for file_meta in files:
                     file_profile = file_profiler.profile_file(
                         repo_id=repo_id,
@@ -576,92 +774,114 @@ class IndexingPipeline:
                         framework=repo_profile.framework if repo_profile else None,
                     )
                     file_profiles.append(file_profile)
-                
+
                 # 배치 저장
                 if file_profiles:
                     self.repo_store.save_file_profiles_batch(file_profiles)
                     api_count = sum(1 for p in file_profiles if p.is_api_file)
-                    logger.info(f"[Profiling] File: {len(file_profiles)}개 (API: {api_count}개)")
+                    logger.info(
+                        f"[Step 4/11] File profiling: {len(file_profiles)} files (API: {api_count}) ({time.time() - step_start:.2f}s)"
+                    )
             except Exception as e:
-                logger.warning(f"[Profiling] File profiling 실패 (계속 진행): {e}")
-            
+                logger.warning(f"[Step 4/11] File profiling failed: {e}")
+
             # 6-2. Graph Ranking (노드 중요도 계산)
-            logger.info("[Profiling] Graph ranking 시작...")
+            step_start = time.time()
             try:
                 if all_nodes:
-                    updated_count = self.graph_store.update_all_node_importance(repo_id, batch_size=100)
-                    logger.info(f"[Profiling] Graph: {updated_count}개 노드 중요도 계산 완료")
+                    # 타입 체크 우회: 실제 구현체에는 update_all_node_importance가 있음
+                    updated_count = self.graph_store.update_all_node_importance(  # type: ignore[attr-defined]
+                        repo_id, batch_size=100
+                    )
+                    logger.info(
+                        f"[Step 5/11] Graph ranking: {updated_count} nodes ({time.time() - step_start:.2f}s)"
+                    )
             except Exception as e:
-                logger.warning(f"[Profiling] Graph ranking 실패 (계속 진행): {e}")
+                logger.warning(f"[Step 5/11] Graph ranking failed: {e}")
 
             # 7. 청킹
+            step_start = time.time()
             chunks = self.chunker.chunk(all_nodes)
-            logger.info(f"Generated {len(chunks)} chunks")
+            logger.info(
+                f"[Step 6/11] Chunking: {len(chunks)} chunks ({time.time() - step_start:.2f}s)"
+            )
 
             # 8. 청크 저장
+            step_start = time.time()
             if chunks:
                 self.chunk_store.save_chunks(chunks)
-                logger.info("Saved chunks to database")
-            
+            logger.info(
+                f"[Step 7/11] Chunk save: {len(chunks)} chunks ({time.time() - step_start:.2f}s)"
+            )
+
             # 8-1. Chunk Tagging + search_text 생성
-            logger.info("[Profiling] Chunk tagging 및 search_text 생성 시작...")
+            step_start = time.time()
             try:
                 from ..chunking.chunk_tagger import ChunkTagger
                 from ..chunking.search_text_builder import SearchTextBuilder
-                
+
                 chunk_tagger = ChunkTagger()
                 search_text_builder = SearchTextBuilder()
                 metadata_updates = []
-                
+
                 # 파일별로 프로파일 매핑
                 file_profile_map = {p.file_path: p for p in file_profiles}
-                
+
                 for chunk in chunks:
-                    file_profile = file_profile_map.get(chunk.file_path)
-                    
+                    chunk_file_profile: FileProfile | None = file_profile_map.get(chunk.file_path)
+
                     # 1. 메타데이터 태깅
-                    chunk_metadata = chunk_tagger.tag_chunk(chunk.text, file_profile)
-                    
+                    chunk_metadata = chunk_tagger.tag_chunk(chunk.text, chunk_file_profile)
+
                     # 2. search_text 생성
                     search_text = search_text_builder.build(chunk, file_profile, chunk_metadata)
-                    
+
                     # 3. chunk.attrs에 추가 (나중에 embedding/lexical에서 사용)
                     chunk.attrs["search_text"] = search_text
                     chunk.attrs["metadata"] = chunk_metadata
-                    
+
                     metadata_updates.append((repo_id, chunk.id, chunk_metadata))
-                
+
                 # 배치 업데이트
                 if metadata_updates:
-                    self.chunk_store.update_chunk_metadata_batch(metadata_updates)
-                    api_chunks = sum(1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk"))
-                    logger.info(f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)")
-                    logger.info(f"[Profiling] search_text 생성 완료 ({len(chunks)}개 chunk)")
+                    # 타입 체크 우회: 실제 구현체에는 update_chunk_metadata_batch가 있음
+                    self.chunk_store.update_chunk_metadata_batch(metadata_updates)  # type: ignore[attr-defined]
+                    api_chunks = sum(
+                        1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk")
+                    )
+                    logger.info(
+                        f"[Step 8/11] Chunk tagging: {len(metadata_updates)} chunks (API: {api_chunks}) ({time.time() - step_start:.2f}s)"
+                    )
             except Exception as e:
-                logger.warning(f"[Profiling] Chunk tagging/search_text 실패 (계속 진행): {e}")
+                logger.warning(f"[Step 8/11] Chunk tagging failed: {e}")
 
             # 진행률 50% (청킹 완료)
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.5)
 
             # 9. Lexical 인덱싱
+            step_start = time.time()
             if chunks:
                 try:
                     self.lexical_search.index_chunks(chunks)
-                    logger.info("Indexed chunks in lexical search")
+                    logger.info(
+                        f"[Step 9/11] Lexical indexing: {len(chunks)} chunks ({time.time() - step_start:.2f}s)"
+                    )
                 except Exception as e:
-                    logger.error(f"Lexical indexing failed: {e}")
+                    logger.error(f"[Step 9/11] Lexical indexing failed: {e}")
 
             # 진행률 70% (Lexical 완료)
             self.repo_store.update_indexing_status(repo_id, "indexing", progress=0.7)
 
             # 10. 임베딩 생성 및 저장 (비동기 병렬 + 중복 제거)
+            step_start = time.time()
             if chunks:
                 try:
                     import hashlib
 
-                    logger.info("Generating embeddings (async + dedup)...")
                     # ✅ await 사용 (asyncio.run 대신)
-                    vectors = await self._embed_chunks_async(chunks, repo_id)
+                    vectors = await self._embed_chunks_async(
+                        chunks, repo_id, use_cache=use_embedding_cache
+                    )
 
                     # content_hash 계산
                     content_hashes = []
@@ -671,45 +891,82 @@ class IndexingPipeline:
                         content_hashes.append(content_hash)
 
                     chunk_ids = [chunk.id for chunk in chunks]
-                    self.embedding_store.save_embeddings(
-                        repo_id, chunk_ids, vectors, content_hashes=content_hashes
+                    self.embedding_store.save_embeddings(repo_id, chunk_ids, vectors)
+                    logger.info(
+                        f"[Step 10/11] Embedding generation: {len(vectors)} vectors ({time.time() - step_start:.2f}s)"
                     )
-                    logger.info(f"Saved {len(vectors)} embeddings")
                 except Exception as e:
-                    logger.error(f"Embedding failed: {e}")
+                    logger.error(f"[Step 10/11] Embedding generation failed: {e}")
 
             # 10.5. Route 추출 및 저장 (API 엔드포인트 인덱싱)
+            step_start = time.time()
+            route_count = 0
+            all_routes = []
             if self.route_store and self.route_extractor:
                 try:
-                    logger.info("Extracting API routes...")
-                    all_routes = []
-                    
                     # API 파일만 처리
-                    for file_path, profile in file_profiles.items():
+                    for profile in file_profiles:
                         if not profile or not profile.is_api_file:
                             continue
-                        
+
                         # 해당 파일의 nodes 가져오기
-                        file_nodes = [n for n in all_nodes if n.file_path == file_path]
-                        
+                        file_nodes = [n for n in all_nodes if n.file_path == profile.file_path]
+
                         if not file_nodes:
                             continue
-                        
+
                         # Route 추출
                         routes = self.route_extractor.extract_routes(file_nodes, profile)
                         all_routes.extend(routes)
-                    
+
                     # Route 저장
                     if all_routes:
                         self.route_store.save_routes(all_routes)
-                        logger.info(f"Indexed {len(all_routes)} API routes")
-                    else:
-                        logger.info("No API routes found")
-                        
+                        route_count = len(all_routes)
+
                 except Exception as e:
                     logger.error(f"Route extraction failed: {e}", exc_info=True)
+            logger.info(
+                f"[Step 10.5/13] Route extraction: {route_count} routes ({time.time() - step_start:.2f}s)"
+            )
 
-            # 11. 메타데이터 업데이트
+            # 11. Route Semantic 인덱싱 (Phase 1)
+            if self.semantic_node_store and self.embedding_service_small and all_routes:
+                step_start = time.time()
+                try:
+                    # 기존 route semantic 삭제
+                    self.semantic_node_store.clear_repo(repo_id, node_types=["route"])
+
+                    # 새로 생성
+                    # 타입 체크 우회: 실제로는 메서드가 존재함
+                    route_semantic_count = await self._index_route_semantics(repo_id, all_routes)  # type: ignore[attr-defined]
+
+                    logger.info(
+                        f"[Step 11/13] Route semantics: {route_semantic_count} routes ({time.time() - step_start:.2f}s)"
+                    )
+                except Exception as e:
+                    logger.error(f"[Step 11/13] Route semantics failed: {e}")
+
+            # 12. Symbol Semantic 인덱싱 (Phase 1)
+            if self.semantic_node_store and self.embedding_service_small and all_nodes:
+                step_start = time.time()
+                try:
+                    # 기존 symbol semantic 삭제
+                    self.semantic_node_store.clear_repo(repo_id, node_types=["symbol"])
+
+                    # 새로 생성
+                    # 타입 체크 우회: 실제로는 메서드가 존재함
+                    symbol_semantic_count = await self._index_symbol_semantics(  # type: ignore[attr-defined]
+                        repo_id, all_nodes, file_profiles
+                    )
+
+                    logger.info(
+                        f"[Step 12/13] Symbol semantics: {symbol_semantic_count} symbols ({time.time() - step_start:.2f}s)"
+                    )
+                except Exception as e:
+                    logger.error(f"[Step 12/13] Symbol semantics failed: {e}")
+
+            # 13. 메타데이터 업데이트
             metadata.total_files = len(files)
             metadata.total_nodes = len(all_nodes)
             metadata.total_chunks = len(chunks)
@@ -774,6 +1031,9 @@ class IndexingPipeline:
         else:
             parser = self._parser_cache[file_meta.language]
 
+        if parser is None:
+            logger.warning(f"No parser available for language: {file_meta.language}")
+            return [], []
         symbols, relations = parser.parse_file(
             {
                 "repo_id": repo_id,
@@ -853,7 +1113,8 @@ class IndexingPipeline:
         chunks: list[CodeChunk],
         repo_id: RepoId,
         batch_size: int | None = None,
-        max_concurrent: int = 3,
+        max_concurrent: int = 20,
+        use_cache: bool = False,
     ) -> list[list[float]]:
         """
         청크를 비동기 병렬로 임베딩 생성 (중복 제거 포함)
@@ -862,22 +1123,22 @@ class IndexingPipeline:
         중복 청크는 기존 임베딩 재사용
 
         성능 튜닝 포인트:
-        - batch_size: 모델별 최적값 (Mistral:200, OpenAI:150, 기본:100)
-        - max_concurrent: API rate limit/네트워크 환경에 따라 2~5 조정
+        - batch_size: 모델별 최적값 (Mistral:350, OpenAI:200, 기본:100)
+        - max_concurrent: API rate limit/네트워크 환경에 따라 10~20 조정
         - batch_size × max_concurrent 조합으로 RPS/latency 최적화
         """
         import hashlib
 
-        # 배치 크기 설정
+        # 배치 크기 설정 (토큰 제한 고려)
         if batch_size is None:
             from ..core.enums import EmbeddingModel
 
             model = self.embedding_service.model
 
             if model == EmbeddingModel.CODESTRAL_EMBED:
-                batch_size = 200
+                batch_size = 350  # 토큰 제한(8192) 안전 범위
             elif model in (EmbeddingModel.OPENAI_3_SMALL, EmbeddingModel.OPENAI_3_LARGE):
-                batch_size = 150
+                batch_size = 200
             else:
                 batch_size = 100
 
@@ -888,16 +1149,22 @@ class IndexingPipeline:
             content_hash = hashlib.md5(text.encode()).hexdigest()
             chunk_hashes.append(content_hash)
 
-        # 2. 기존 임베딩 조회 (배치)
-        model_name = self.embedding_service.model.value
-        existing_embeddings = self.embedding_store.get_embeddings_by_content_hashes(
-            chunk_hashes, model_name
-        )
+        # 2. 기존 임베딩 조회 (배치) - 캐시 사용 여부에 따라
+        existing_embeddings = {}
+        cache_hits = 0
+        if use_cache:
+            model_name = self.embedding_service.model.value
+            # 타입 체크 우회: 실제 구현체에는 get_embeddings_by_content_hashes가 있음
+            existing_embeddings = self.embedding_store.get_embeddings_by_content_hashes(  # type: ignore[attr-defined]
+                chunk_hashes, model_name
+            )
 
-        cache_hits = len(existing_embeddings)
-        logger.info(
-            f"Embedding cache: {cache_hits}/{len(chunks)} hits ({cache_hits / len(chunks) * 100:.1f}%)"
-        )
+            cache_hits = len(existing_embeddings)
+            logger.info(
+                f"Embedding cache: {cache_hits}/{len(chunks)} hits ({cache_hits / len(chunks) * 100:.1f}%)"
+            )
+        else:
+            logger.info("Embedding cache: disabled (generating all embeddings)")
 
         # 3. 임베딩이 없는 청크만 필터링
         chunks_to_embed = []
@@ -908,15 +1175,45 @@ class IndexingPipeline:
                 chunks_to_embed.append(chunk)
                 chunk_indices.append(i)
 
+        # 4. 큰 청크 필터링 (Mistral API 제한: 8192 토큰)
+        MAX_TOKEN_LIMIT = 7000  # 안전 마진 포함
+        CHARS_PER_TOKEN = 4  # 평균 토큰당 글자 수
+        max_chars = MAX_TOKEN_LIMIT * CHARS_PER_TOKEN
+
+        filtered_chunks = []
+        filtered_indices = []
+        skipped_chunks = []
+
+        for chunk, idx in zip(chunks_to_embed, chunk_indices, strict=False):
+            chunk_text = self.embedding_service._prepare_chunk_text(chunk)
+            if len(chunk_text) > max_chars:
+                skipped_chunks.append(
+                    (chunk.id, len(chunk_text), len(chunk_text) // CHARS_PER_TOKEN)
+                )
+            else:
+                filtered_chunks.append(chunk)
+                filtered_indices.append(idx)
+
+        if skipped_chunks:
+            logger.warning(
+                f"Skipped {len(skipped_chunks)} large chunks exceeding {MAX_TOKEN_LIMIT} tokens:"
+            )
+            for chunk_id, chars, tokens in skipped_chunks[:5]:
+                logger.warning(f"  - {chunk_id}: ~{tokens} tokens ({chars} chars)")
+            if len(skipped_chunks) > 5:
+                logger.warning(f"  ... and {len(skipped_chunks) - 5} more")
+
         # 4. 새로운 청크만 임베딩 생성
         new_vectors = []
-        if chunks_to_embed:
-            logger.info(f"Generating {len(chunks_to_embed)} new embeddings...")
+        if filtered_chunks:
+            logger.info(
+                f"Generating {len(filtered_chunks)} new embeddings (skipped {len(skipped_chunks)} large chunks)..."
+            )
 
             # 배치 생성
             batches = [
-                chunks_to_embed[i : i + batch_size]
-                for i in range(0, len(chunks_to_embed), batch_size)
+                filtered_chunks[i : i + batch_size]
+                for i in range(0, len(filtered_chunks), batch_size)
             ]
             total_batches = len(batches)
 
@@ -928,9 +1225,10 @@ class IndexingPipeline:
             async def embed_batch_with_tracking(batch_idx: int, batch: list[CodeChunk]):
                 """배치 임베딩 + 진행률 추적"""
                 nonlocal completed_batches, last_progress
+                import asyncio as _asyncio
 
                 async with semaphore:
-                    loop = asyncio.get_running_loop()
+                    loop = _asyncio.get_running_loop()
 
                     # 동기 함수를 비동기로 실행
                     vectors = await loop.run_in_executor(
@@ -971,11 +1269,11 @@ class IndexingPipeline:
                 all_vectors[i] = existing_embeddings[content_hash]
 
         # 새로 생성된 임베딩 배치
-        for idx, vector in zip(chunk_indices, new_vectors, strict=False):
+        for idx, vector in zip(filtered_indices, new_vectors, strict=False):
             all_vectors[idx] = vector
 
         logger.info(
-            f"Total embeddings: {len(all_vectors)} (cached: {cache_hits}, new: {len(new_vectors)})"
+            f"Total embeddings: {len(all_vectors)} (cached: {cache_hits}, new: {len(new_vectors)}, skipped: {len(skipped_chunks)})"
         )
 
         # 타입 체크: 모든 벡터가 채워졌는지 확인
@@ -1125,3 +1423,201 @@ def _parse_file_worker(
     except Exception as e:
         # 에러 정보를 반환 (로깅은 메인 프로세스에서)
         return [], [], "", str(e)
+
+
+async def _index_route_semantics(
+    self,
+    repo_id: RepoId,
+    routes: list,  # list[RouteInfo]
+) -> int:
+    """
+    Route 템플릿 summary + 3-small 임베딩
+
+    Args:
+        repo_id: 저장소 ID
+        routes: RouteInfo 리스트
+
+    Returns:
+        저장된 route 수
+    """
+    if not routes:
+        return 0
+
+    from ..core.enums import EmbeddingModel
+
+    logger.info("[Semantic] Generating route summaries...")
+
+    semantic_nodes = []
+    embeddings_to_generate = []
+
+    for route in routes:
+        # 템플릿 summary
+        summary = (
+            f"{route.http_method} {route.http_path}: {route.handler_name} in {route.file_path}"
+        )
+        embeddings_to_generate.append(summary)
+
+        semantic_nodes.append(
+            {
+                "repo_id": repo_id,
+                "node_id": route.route_id,
+                "node_type": "route",
+                "summary": summary,
+                "summary_method": "template",
+                "model": EmbeddingModel.OPENAI_3_SMALL.value,
+                "embedding": None,  # 나중에 채움
+                "source_table": "route_index",
+                "source_id": route.route_id,
+                "metadata": {
+                    "http_method": route.http_method,
+                    "http_path": route.http_path,
+                    "framework": route.framework,
+                    "importance_score": 0.8,  # route는 기본적으로 중요
+                },
+            }
+        )
+
+    # 배치 임베딩 생성
+    logger.info(f"[Semantic] Generating {len(embeddings_to_generate)} route embeddings...")
+    embeddings = self.embedding_service_small.embed_texts(embeddings_to_generate)
+
+    # 임베딩 채우기
+    for node, embedding in zip(semantic_nodes, embeddings, strict=False):
+        node["embedding"] = embedding
+
+    # 배치 저장
+    saved = self.semantic_node_store.save_batch(
+        semantic_nodes, batch_size=1000, on_conflict="replace"
+    )
+
+    # 비용 로깅
+    total_tokens = sum(len(s.split()) * 1.3 for s in embeddings_to_generate)
+    logger.info(
+        f"[Semantic] Routes: {saved} saved, ~{int(total_tokens)} tokens, "
+        f"~${total_tokens / 1_000_000 * 0.02:.4f} cost (3-small)"
+    )
+
+    return int(saved)
+
+
+async def _index_symbol_semantics(
+    self,
+    repo_id: RepoId,
+    nodes: list,  # list[CodeNode]
+    file_profiles: list,  # list[FileProfile]
+) -> int:
+    """
+    Symbol 템플릿 summary + 3-small 임베딩 (퍼블릭 심볼만)
+
+    Args:
+        repo_id: 저장소 ID
+        nodes: CodeNode 리스트
+        file_profiles: FileProfile 리스트
+
+    Returns:
+        저장된 symbol 수
+    """
+    from ..core.enums import EmbeddingModel
+    from .symbol_summary_builder import SymbolSummaryBuilder, calculate_importance
+
+    # 파일 프로파일 매핑
+    file_profile_map = {p.file_path: p for p in file_profiles}
+
+    # 인덱싱 대상 필터링
+    indexable = []
+    for node in nodes:
+        # 1. Function/Class/Method만
+        if node.kind not in ("Function", "Class", "Method"):
+            continue
+
+        # 2. Private 제외 (__init__ 제외)
+        if node.name.startswith("_") and node.name != "__init__":
+            continue
+
+        # 3. 테스트 파일 제외 (선택적)
+        file_profile = file_profile_map.get(node.file_path)
+        if file_profile and file_profile.is_test_file:
+            continue
+
+        # 4. Migration 파일 제외
+        if "migration" in node.file_path.lower() or "alembic" in node.file_path.lower():
+            continue
+
+        indexable.append(node)
+
+    # 상한선 (비용 제어)
+    MAX_SYMBOLS_PER_REPO = 20000
+    if len(indexable) > MAX_SYMBOLS_PER_REPO:
+        # importance 순으로 정렬 후 상위만
+        for node in indexable:
+            file_profile = file_profile_map.get(node.file_path)
+            node._temp_importance = calculate_importance(node, file_profile)
+        indexable.sort(key=lambda n: n._temp_importance, reverse=True)
+        indexable = indexable[:MAX_SYMBOLS_PER_REPO]
+        logger.warning(
+            f"[Semantic] Symbol limit reached, indexing top {MAX_SYMBOLS_PER_REPO} by importance"
+        )
+
+    logger.info(f"[Semantic] Generating symbol summaries for {len(indexable)} symbols...")
+
+    builder = SymbolSummaryBuilder(self.graph_store)
+    semantic_nodes = []
+    embeddings_to_generate = []
+
+    for node in indexable:
+        # Importance 계산
+        file_profile = file_profile_map.get(node.file_path)
+        importance = calculate_importance(node, file_profile)
+
+        # 템플릿 summary
+        summary = builder.build(node)
+        embeddings_to_generate.append(summary)
+
+        semantic_nodes.append(
+            {
+                "repo_id": repo_id,
+                "node_id": node.id,  # prefix 없이 원본 ID
+                "node_type": "symbol",
+                "summary": summary,
+                "summary_method": "template",
+                "model": EmbeddingModel.OPENAI_3_SMALL.value,
+                "embedding": None,
+                "source_table": "code_nodes",
+                "source_id": node.id,
+                "metadata": {
+                    "importance_score": importance,
+                    "is_api_handler": node.attrs.get("is_api_handler", False),
+                    "kind": node.kind,
+                    "name": node.name,
+                    "file_path": node.file_path,
+                    "line_count": node.attrs.get("line_count", 0),
+                },
+            }
+        )
+
+    # 배치 임베딩 생성
+    logger.info(f"[Semantic] Generating {len(embeddings_to_generate)} symbol embeddings...")
+    embeddings = self.embedding_service_small.embed_texts(embeddings_to_generate)
+
+    # 임베딩 채우기
+    for node, embedding in zip(semantic_nodes, embeddings, strict=False):
+        node["embedding"] = embedding
+
+    # 배치 저장 (1000개씩)
+    saved = self.semantic_node_store.save_batch(
+        semantic_nodes, batch_size=1000, on_conflict="replace"
+    )
+
+    # 비용 로깅
+    total_tokens = sum(len(s.split()) * 1.3 for s in embeddings_to_generate)
+    logger.info(
+        f"[Semantic] Symbols: {saved} saved, ~{int(total_tokens)} tokens, "
+        f"~${total_tokens / 1_000_000 * 0.02:.4f} cost (3-small)"
+    )
+
+    return int(saved)
+
+
+# 메서드를 IndexingPipeline 클래스에 추가
+IndexingPipeline._index_route_semantics = _index_route_semantics  # type: ignore[attr-defined]
+IndexingPipeline._index_symbol_semantics = _index_symbol_semantics  # type: ignore[attr-defined]

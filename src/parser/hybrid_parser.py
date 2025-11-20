@@ -56,6 +56,7 @@ class HybridParser(ParserPort):
         self.enable_type_hint_analysis = enable_type_hint_analysis
 
         # 타입 힌트 분석기 (Python만 지원)
+        self.type_hint_analyzer: TypeHintAnalyzer | None
         if enable_type_hint_analysis:
             self.type_hint_analyzer = TypeHintAnalyzer()
         else:
@@ -246,9 +247,10 @@ class HybridParser(ParserPort):
             return False
 
         # 같은 라인이면 컬럼도 확인
-        if s1_start_line == s1_end_line == s2_start_line == s2_end_line:
-            if s1_end_col < s2_start_col or s2_end_col < s1_start_col:
-                return False
+        if s1_start_line == s1_end_line == s2_start_line == s2_end_line and (
+            s1_end_col < s2_start_col or s2_end_col < s1_start_col
+        ):
+            return False
 
         return True
 
@@ -300,17 +302,32 @@ class HybridParser(ParserPort):
             return []
 
         # 타입 힌트 분석
+        if not self.type_hint_analyzer:
+            return []
         inferred_calls = self.type_hint_analyzer.analyze(code, file_meta["path"])
 
         # InferredCall을 RawRelation으로 변환
+        # 타입 힌트 분석은 정확한 span을 제공하지 않으므로 임시 span 사용
         relations = []
+        repo_id = file_meta.get("repo_id", "")
+        file_path = file_meta.get("path", "")
+        language = file_meta.get("language", "python")
+
         for call in inferred_calls:
+            # 임시 span 생성 (line 기반)
+            line = call.line if call.line > 0 else 1
+            temp_span = (line, 0, line, 0)
             relations.append(
                 RawRelation(
-                    source=call.source,
-                    target=call.target,
+                    repo_id=repo_id,
+                    file_path=file_path,
+                    language=language,
                     type="calls",
+                    src_span=temp_span,
+                    dst_span=temp_span,
                     attrs={
+                        "source": call.source,
+                        "target": call.target,
                         "confidence": call.confidence,
                         "inferred": True,
                         "method": "type_hint",

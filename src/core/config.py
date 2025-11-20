@@ -70,7 +70,7 @@ class Config:
 
     # Graph scoring 설정
     graph_depth_decay: float = 0.5  # Depth마다 점수 감소 계수 (0~1)
-    graph_edge_weights: dict[str, float] = None  # Edge 타입별 가중치
+    graph_edge_weights: dict[str, float] | None = None  # Edge 타입별 가중치
 
     # Fuzzy scoring 설정
     fuzzy_stopwords: list[str] | None = None  # 제외할 불용어 리스트
@@ -154,7 +154,7 @@ class Config:
             embedding_model=EmbeddingModel(
                 os.getenv("EMBEDDING_MODEL", EmbeddingModel.CODESTRAL_EMBED.value)
             ),
-            embedding_api_key=os.getenv("EMBEDDING_API_KEY"),
+            embedding_api_key=os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
             embedding_dimension=(int(dim) if (dim := os.getenv("EMBEDDING_DIMENSION")) else None),
             mistral_api_base=os.getenv("MISTRAL_API_BASE", "https://api.mistral.ai/v1"),
             chunker_max_tokens=int(os.getenv("CHUNKER_MAX_TOKENS", "7000")),

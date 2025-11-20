@@ -14,22 +14,26 @@ logger = logging.getLogger(__name__)
 class PostgresSymbolSearch(SymbolSearchPort):
     """
     PostgreSQL code_nodes 테이블 직접 조회
-    
+
     역할:
     - 함수/클래스 이름으로 검색
     - Decorator 패턴 검색 (API route 찾기)
     - 파일 내 심볼 검색
     - 위치 기반 심볼 검색
     """
-    
+
     def __init__(self, graph_store: GraphStorePort):
         """
         Args:
             graph_store: GraphStore (connection pool 재사용)
         """
         self.graph_store = graph_store
-        self.conn_pool = graph_store._pool
-    
+        # 타입 체크 우회: 실제 구현체(PostgresGraphStore)에는 _pool이 있음
+        pool = getattr(graph_store, "_pool", None)
+        if pool is None:
+            raise ValueError("GraphStore must have _pool attribute")
+        self.conn_pool: Any = pool  # type: ignore[assignment]
+
     def search_by_name(
         self,
         repo_id: RepoId,
@@ -40,7 +44,7 @@ class PostgresSymbolSearch(SymbolSearchPort):
     ) -> list[CodeNode]:
         """
         심볼 이름 검색
-        
+
         구현:
         - fuzzy=True: LIKE %query% (부분 매칭)
         - fuzzy=False: 정확 매칭
@@ -50,13 +54,13 @@ class PostgresSymbolSearch(SymbolSearchPort):
         try:
             with conn.cursor() as cur:
                 query_lower = query.lower()
-                
+
                 # SQL 작성
                 if fuzzy:
                     # Trigram 유사도 + LIKE
                     sql = """
                         SELECT repo_id, id, kind, language, file_path,
-                               span_start_line, span_start_col, 
+                               span_start_line, span_start_col,
                                span_end_line, span_end_col,
                                name, text, attrs
                         FROM code_nodes
@@ -79,31 +83,31 @@ class PostgresSymbolSearch(SymbolSearchPort):
                           AND LOWER(name) = %s
                     """
                     params = [repo_id, query_lower]
-                
+
                 # Kind 필터
                 if kind:
                     sql += " AND kind = %s"
                     params.append(kind)
-                
+
                 # 정렬: 이름 길이 ASC (짧은 것부터), 그 다음 유사도
                 sql += """
-                    ORDER BY 
+                    ORDER BY
                         LENGTH(name) ASC,
                         similarity(name, %s) DESC
                     LIMIT %s
                 """
                 params.extend([query, k])
-                
+
                 cur.execute(sql, params)
                 rows = cur.fetchall()
-                
+
                 results = [self._row_to_node(row) for row in rows]
                 logger.debug(f"Symbol search '{query}': {len(results)} results")
                 return results
-                
+
         finally:
             self.conn_pool.putconn(conn)
-    
+
     def search_by_decorator(
         self,
         repo_id: RepoId,
@@ -112,7 +116,7 @@ class PostgresSymbolSearch(SymbolSearchPort):
     ) -> list[CodeNode]:
         """
         Decorator 검색
-        
+
         구현:
         - JSONB @> 연산자 사용
         - "@router.post" → "router.post" 정규화
@@ -123,7 +127,7 @@ class PostgresSymbolSearch(SymbolSearchPort):
             with conn.cursor() as cur:
                 # @ 기호 제거
                 decorator_clean = decorator_pattern.lstrip("@")
-                
+
                 # JSONB 검색 (배열 내 부분 매칭)
                 # attrs->'decorators' 가 ["router.post('/search')"] 같은 형태
                 sql = """
@@ -142,17 +146,17 @@ class PostgresSymbolSearch(SymbolSearchPort):
                     ORDER BY file_path, span_start_line
                     LIMIT %s
                 """
-                
+
                 cur.execute(sql, [repo_id, f"%{decorator_clean}%", k])
                 rows = cur.fetchall()
-                
+
                 results = [self._row_to_node(row) for row in rows]
                 logger.debug(f"Decorator search '{decorator_pattern}': {len(results)} results")
                 return results
-                
+
         finally:
             self.conn_pool.putconn(conn)
-    
+
     def search_by_file(
         self,
         repo_id: RepoId,
@@ -162,7 +166,7 @@ class PostgresSymbolSearch(SymbolSearchPort):
     ) -> list[CodeNode]:
         """
         파일 내 심볼 검색
-        
+
         구현:
         - 파일 경로로 필터링
         - kind 옵션 지원
@@ -180,25 +184,25 @@ class PostgresSymbolSearch(SymbolSearchPort):
                     WHERE repo_id = %s
                       AND file_path = %s
                 """
-                params = [repo_id, file_path]
-                
+                params: list[Any] = [repo_id, file_path]
+
                 if kind:
                     sql += " AND kind = %s"
                     params.append(kind)
-                
+
                 sql += " ORDER BY span_start_line ASC LIMIT %s"
                 params.append(k)
-                
+
                 cur.execute(sql, params)
                 rows = cur.fetchall()
-                
+
                 results = [self._row_to_node(row) for row in rows]
                 logger.debug(f"File symbols '{file_path}': {len(results)} results")
                 return results
-                
+
         finally:
             self.conn_pool.putconn(conn)
-    
+
     def get_symbol_by_location(
         self,
         repo_id: RepoId,
@@ -207,18 +211,16 @@ class PostgresSymbolSearch(SymbolSearchPort):
     ) -> CodeNode | None:
         """
         위치로 심볼 찾기
-        
+
         구현:
         - GraphStore의 기존 메서드 위임
         """
-        return self.graph_store.get_node_by_location(
-            repo_id, file_path, line, 0
-        )
-    
+        return self.graph_store.get_node_by_location(repo_id, file_path, line, 0)
+
     def _row_to_node(self, row: tuple) -> CodeNode:
         """
         DB row → CodeNode 변환
-        
+
         Args:
             row: (repo_id, id, kind, language, file_path,
                   span_start_line, span_start_col, span_end_line, span_end_col,
@@ -235,4 +237,3 @@ class PostgresSymbolSearch(SymbolSearchPort):
             text=row[10],
             attrs=json.loads(row[11]) if row[11] else {},
         )
-

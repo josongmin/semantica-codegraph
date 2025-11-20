@@ -4,6 +4,7 @@ import logging
 
 from src.core.bootstrap import Bootstrap
 from src.core.models import LocationContext, RepoId
+from src.search.query_classifier import QueryClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,9 @@ class MCPService:
         self.chunk_store = bootstrap.chunk_store
         self.context_packer = bootstrap.context_packer
         self.repo_store = bootstrap.repo_store
+
+        # Phase 2: Query Classifier
+        self.query_classifier = QueryClassifier()
 
     async def search_code(
         self,
@@ -92,9 +96,16 @@ class MCPService:
                         filters=filters if filters else None,
                     )
 
+                # Phase 2: Query type 분류
+                query_type = self.query_classifier.classify(query)
+
                 # 하이브리드 검색
                 candidates = self.retriever.retrieve(
-                    repo_id=repo_id, query=query, k=limit, location_ctx=location_ctx
+                    repo_id=repo_id,
+                    query=query,
+                    k=limit,
+                    location_ctx=location_ctx,
+                    query_type=query_type.value,  # Phase 2: query_type 전달
                 )
 
                 # Candidate → 결과 딕셔너리 변환

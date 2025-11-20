@@ -231,8 +231,8 @@ class TypeHintAnalyzer:
 
         elif isinstance(annotation, ast.Attribute):
             # 모듈 포함: auth.UserAuth
-            parts = []
-            node = annotation
+            parts: list[str] = []
+            node: ast.expr = annotation
             while isinstance(node, ast.Attribute):
                 parts.insert(0, node.attr)
                 node = node.value

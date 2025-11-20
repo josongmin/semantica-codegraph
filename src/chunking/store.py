@@ -254,13 +254,13 @@ class PostgresChunkStore(ChunkStorePort):
             text=row[9],
             attrs=row[10] if row[10] else {},
         )
-    
+
     # ===== Chunk Metadata 관리 =====
-    
+
     def update_chunk_metadata(self, repo_id: RepoId, chunk_id: str, metadata: dict) -> None:
         """
         청크 메타데이터 업데이트
-        
+
         Args:
             repo_id: 저장소 ID
             chunk_id: 청크 ID
@@ -280,22 +280,25 @@ class PostgresChunkStore(ChunkStorePort):
                 conn.commit()
         finally:
             self._put_connection(conn)
-    
+
     def update_chunk_metadata_batch(self, updates: list[tuple[RepoId, str, dict]]) -> None:
         """
         청크 메타데이터 배치 업데이트
-        
+
         Args:
             updates: [(repo_id, chunk_id, metadata), ...]
         """
         if not updates:
             return
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                data = [(json.dumps(metadata), repo_id, chunk_id) for repo_id, chunk_id, metadata in updates]
-                
+                data = [
+                    (json.dumps(metadata), repo_id, chunk_id)
+                    for repo_id, chunk_id, metadata in updates
+                ]
+
                 execute_batch(
                     cur,
                     """
@@ -309,9 +312,9 @@ class PostgresChunkStore(ChunkStorePort):
                 conn.commit()
         finally:
             self._put_connection(conn)
-        
+
         logger.info(f"Updated metadata for {len(updates)} chunks")
-    
+
     def get_chunk_metadata(self, repo_id: RepoId, chunk_id: str) -> dict | None:
         """청크 메타데이터 조회"""
         conn = self._get_connection()
@@ -322,10 +325,11 @@ class PostgresChunkStore(ChunkStorePort):
                     (repo_id, chunk_id),
                 )
                 row = cur.fetchone()
-                
+
                 if row and row[0]:
-                    return row[0]
+                    metadata = row[0]
+                    return dict(metadata) if isinstance(metadata, dict) else {}
         finally:
             self._put_connection(conn)
-        
+
         return None

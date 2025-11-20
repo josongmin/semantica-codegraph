@@ -130,7 +130,7 @@ class PatternAnalyzer:
 
         # AST로 함수/클래스 범위 추출
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            if isinstance(node, ast.FunctionDef | ast.ClassDef):
                 # 함수/클래스 내부 코드만 추출
                 node_code = self._extract_node_code(code, node)
                 if node_code:

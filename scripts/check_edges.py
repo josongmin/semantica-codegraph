@@ -100,7 +100,7 @@ def check_edges():
         if edges:
             print("\n엣지 예시 (최대 10개):")
             for (
-                repo_id,
+                _repo_id,
                 _src_id,
                 _dst_id,
                 edge_type,

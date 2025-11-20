@@ -64,7 +64,7 @@ def retry(max_attempts: int = 3, delay: float = 1.0):
                     if attempt < max_attempts - 1:
                         time.sleep(delay)
                     else:
-                        raise last_exception
+                        raise last_exception from e
             return None
 
         return wrapper

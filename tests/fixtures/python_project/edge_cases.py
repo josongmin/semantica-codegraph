@@ -12,7 +12,6 @@ from typing import (
     Protocol,
     TypedDict,
     TypeVar,
-    Union,
     overload,
     runtime_checkable,
 )
@@ -23,7 +22,7 @@ K = TypeVar("K")
 V = TypeVar("V")
 
 NestedDict = dict[str, str | int | dict[str, Any] | list[Any]]
-ComplexType = Union[list[dict[str, int | str | None]], dict[str, list[int]]]
+ComplexType = list[dict[str, int | str | None]] | dict[str, list[int]]
 
 
 # TypedDict 사용

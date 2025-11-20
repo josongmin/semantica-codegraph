@@ -1,11 +1,17 @@
 """저장소 메타데이터 관리"""
 
+from __future__ import annotations
+
 import json
 import logging
+from typing import TYPE_CHECKING
 
 import psycopg2
 
 from .models import RepoId, RepoMetadata
+
+if TYPE_CHECKING:
+    from .models import FileProfile, RepoProfile
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +64,7 @@ class RepoMetadataStore:
                 )
                 """
             )
-            
+
             # file_profile 테이블
             cur.execute(
                 """
@@ -72,7 +78,7 @@ class RepoMetadataStore:
                 )
                 """
             )
-            
+
             conn.commit()
             cur.execute(
                 """
@@ -297,18 +303,18 @@ class RepoMetadataStore:
             conn.commit()
 
         logger.info(f"Deleted metadata for repo: {repo_id}")
-    
+
     # ===== Repo Profile 관리 =====
-    
-    def save_profile(self, profile: "RepoProfile") -> None:
+
+    def save_profile(self, profile: RepoProfile) -> None:
         """
         저장소 프로파일 저장
-        
+
         Args:
             profile: RepoProfile 객체
         """
         from dataclasses import asdict
-        
+
         with self._get_connection() as conn, conn.cursor() as cur:
             # repo_profile 테이블에 저장 (JSON)
             cur.execute(
@@ -321,53 +327,53 @@ class RepoMetadataStore:
                 (profile.repo_id, json.dumps(asdict(profile)), json.dumps(asdict(profile))),
             )
             conn.commit()
-        
+
         logger.info(f"Saved profile for repo: {profile.repo_id}")
-    
-    def get_profile(self, repo_id: RepoId) -> "RepoProfile | None":
+
+    def get_profile(self, repo_id: RepoId) -> RepoProfile | None:
         """
         저장소 프로파일 조회
-        
+
         Args:
             repo_id: 저장소 ID
-        
+
         Returns:
             RepoProfile 또는 None
         """
         from ..core.models import RepoProfile
-        
+
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT profile_data FROM repo_profile WHERE repo_id = %s",
                 (repo_id,),
             )
             row = cur.fetchone()
-            
+
             if not row:
                 return None
-            
+
             profile_dict = row[0]
             return RepoProfile(**profile_dict)
-    
+
     def delete_profile(self, repo_id: RepoId) -> None:
         """저장소 프로파일 삭제"""
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute("DELETE FROM repo_profile WHERE repo_id = %s", (repo_id,))
             conn.commit()
-        
+
         logger.info(f"Deleted profile for repo: {repo_id}")
-    
+
     # ===== File Profile 관리 =====
-    
-    def save_file_profile(self, profile: "FileProfile") -> None:
+
+    def save_file_profile(self, profile: FileProfile) -> None:
         """
         파일 프로파일 저장
-        
+
         Args:
             profile: FileProfile 객체
         """
         from dataclasses import asdict
-        
+
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(
                 """
@@ -376,24 +382,29 @@ class RepoMetadataStore:
                 ON CONFLICT (repo_id, file_path)
                 DO UPDATE SET profile_data = %s
                 """,
-                (profile.repo_id, profile.file_path, json.dumps(asdict(profile)), json.dumps(asdict(profile))),
+                (
+                    profile.repo_id,
+                    profile.file_path,
+                    json.dumps(asdict(profile)),
+                    json.dumps(asdict(profile)),
+                ),
             )
             conn.commit()
-    
-    def save_file_profiles_batch(self, profiles: list["FileProfile"]) -> None:
+
+    def save_file_profiles_batch(self, profiles: list[FileProfile]) -> None:
         """파일 프로파일 배치 저장"""
         from dataclasses import asdict
-        
+
         if not profiles:
             return
-        
+
         with self._get_connection() as conn, conn.cursor() as cur:
             # Batch insert
             values = [
                 (p.repo_id, p.file_path, json.dumps(asdict(p)), json.dumps(asdict(p)))
                 for p in profiles
             ]
-            
+
             cur.executemany(
                 """
                 INSERT INTO file_profile (repo_id, file_path, profile_data)
@@ -404,39 +415,39 @@ class RepoMetadataStore:
                 values,
             )
             conn.commit()
-        
+
         logger.info(f"Saved {len(profiles)} file profiles")
-    
-    def get_file_profile(self, repo_id: RepoId, file_path: str) -> "FileProfile | None":
+
+    def get_file_profile(self, repo_id: RepoId, file_path: str) -> FileProfile | None:
         """파일 프로파일 조회"""
         from ..core.models import FileProfile
-        
+
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT profile_data FROM file_profile WHERE repo_id = %s AND file_path = %s",
                 (repo_id, file_path),
             )
             row = cur.fetchone()
-            
+
             if not row:
                 return None
-            
+
             profile_dict = row[0]
             return FileProfile(**profile_dict)
-    
-    def get_file_profiles_by_role(self, repo_id: RepoId, role: str) -> list["FileProfile"]:
+
+    def get_file_profiles_by_role(self, repo_id: RepoId, role: str) -> list[FileProfile]:
         """
         역할별 파일 프로파일 조회
-        
+
         Args:
             repo_id: 저장소 ID
             role: 역할 ("api", "service", "model", "test", "config")
-        
+
         Returns:
             FileProfile 리스트
         """
         from ..core.models import FileProfile
-        
+
         role_field_map = {
             "api": "is_api_file",
             "service": "is_service",
@@ -444,11 +455,11 @@ class RepoMetadataStore:
             "test": "is_test_file",
             "config": "is_config",
         }
-        
+
         field = role_field_map.get(role)
         if not field:
             return []
-        
+
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(
                 f"""
@@ -458,5 +469,5 @@ class RepoMetadataStore:
                 (repo_id,),
             )
             rows = cur.fetchall()
-            
+
             return [FileProfile(**row[0]) for row in rows]

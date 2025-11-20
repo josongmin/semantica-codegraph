@@ -354,7 +354,7 @@ def test_rrf_rank_details(sample_candidates):
         assert isinstance(rank_details, dict)
 
         # rank와 contribution이 있어야 함
-        for backend, details in rank_details.items():
+        for _backend, details in rank_details.items():
             assert "rank" in details
             assert "contribution" in details
             assert details["rank"] >= 0

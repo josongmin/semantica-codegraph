@@ -9,6 +9,8 @@ from .models import (
     RawRelation,
     RawSymbol,
     RepoId,
+    SemanticNode,
+    SemanticSearchResult,
 )
 
 
@@ -247,6 +249,121 @@ class EmbeddingStorePort(Protocol):
 
         Returns:
             ChunkResult 리스트 (유사도 순)
+        """
+        ...
+
+
+# Semantic Node 저장소
+class SemanticNodeStorePort(Protocol):
+    def save(
+        self,
+        repo_id: RepoId,
+        node_id: str,
+        node_type: str,
+        summary: str,
+        summary_method: str,
+        model: str,
+        embedding: list[float],
+        source_table: str | None = None,
+        source_id: str | None = None,
+        doc_type: str | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        """
+        단일 semantic node 저장
+
+        Args:
+            repo_id: 저장소 ID
+            node_id: 노드 ID (원본 테이블 PK)
+            node_type: 노드 타입 (symbol/route/doc/issue)
+            summary: 요약 텍스트
+            summary_method: 요약 방법 (template/llm)
+            model: 임베딩 모델 풀 네임
+            embedding: 임베딩 벡터
+            source_table: 원본 테이블명
+            source_id: 원본 PK
+            doc_type: 문서 타입 (node_type='doc'일 때)
+            metadata: 메타데이터 (importance_score 등)
+        """
+        ...
+
+    def save_batch(
+        self,
+        nodes: list[dict],
+        batch_size: int = 1000,
+        on_conflict: str = "replace",
+    ) -> int:
+        """
+        배치 저장
+
+        Args:
+            nodes: semantic node dict 리스트
+            batch_size: 배치 크기
+            on_conflict: 충돌 시 처리 (replace/skip)
+
+        Returns:
+            저장된 row 수
+        """
+        ...
+
+    def search(
+        self,
+        repo_id: RepoId,
+        query_embedding: list[float],
+        node_type: str | None = None,
+        model: str | None = None,
+        k: int = 10,
+        threshold: float = 0.3,
+    ) -> list[SemanticSearchResult]:
+        """
+        벡터 유사도 검색
+
+        Args:
+            repo_id: 저장소 ID
+            query_embedding: 쿼리 벡터
+            node_type: 노드 타입 필터
+            model: 모델 필터
+            k: 결과 수
+            threshold: 유사도 임계값
+
+        Returns:
+            SemanticSearchResult 리스트
+        """
+        ...
+
+    def get_by_node_id(
+        self,
+        repo_id: RepoId,
+        node_id: str,
+        model: str | None = None,
+    ) -> list[SemanticNode]:
+        """
+        특정 노드의 모든 representation 조회
+
+        Args:
+            repo_id: 저장소 ID
+            node_id: 노드 ID
+            model: 모델 필터 (None이면 전부)
+
+        Returns:
+            SemanticNode 리스트
+        """
+        ...
+
+    def clear_repo(
+        self,
+        repo_id: RepoId,
+        node_types: list[str] | None = None,
+    ) -> int:
+        """
+        재인덱싱 전 기존 데이터 삭제
+
+        Args:
+            repo_id: 저장소 ID
+            node_types: 삭제할 node_type 리스트 (None이면 전부)
+
+        Returns:
+            삭제된 row 수
         """
         ...
 

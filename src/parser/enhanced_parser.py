@@ -64,7 +64,7 @@ class EnhancedParser(ParserPort):
 
         # 동적 분석기들
         self.type_hint_analyzer = TypeHintAnalyzer() if enable_type_hint else None
-        self.pattern_analyzer = None  # 나중에 초기화 (프레임워크 감지 후)
+        self.pattern_analyzer: PatternAnalyzer | None = None  # 나중에 초기화 (프레임워크 감지 후)
         self.test_analyzer = TestCodeAnalyzer() if enable_test else None
 
         self.framework = framework

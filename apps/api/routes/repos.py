@@ -1,5 +1,7 @@
 """저장소 관리 API"""
 
+from pathlib import Path
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
@@ -54,19 +56,24 @@ async def index_repository(
     백그라운드로 실행되며 즉시 응답 반환
     """
     try:
-        # ✅ async 버전 사용 (event loop 충돌 방지)
-        result = await bootstrap.pipeline.index_repository_async(
+        # repo_id 미리 생성 (즉시 응답을 위해)
+        repo_id = request.repo_id or request.name or Path(request.repo_path).name
+
+        # 백그라운드 태스크로 인덱싱 실행
+        background_tasks.add_task(
+            _run_indexing,
             root_path=request.repo_path,
-            repo_id=request.repo_id,
+            repo_id=repo_id,
             name=request.name,
         )
 
+        # 즉시 응답 반환
         return IndexResponse(
-            repo_id=result.repo_id,
-            status="completed",
-            nodes_count=result.total_nodes,
-            edges_count=result.total_edges,
-            chunks_count=result.total_chunks,
+            repo_id=repo_id,
+            status="started",
+            nodes_count=0,
+            edges_count=0,
+            chunks_count=0,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -152,3 +159,24 @@ async def get_indexing_status(repo_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+async def _run_indexing(root_path: str, repo_id: str | None, name: str | None):
+    """백그라운드에서 실행되는 인덱싱 작업"""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"Starting background indexing for {repo_id}")
+        result = await bootstrap.pipeline.index_repository_async(
+            root_path=root_path,
+            repo_id=repo_id,
+            name=name,
+        )
+        logger.info(
+            f"Indexing completed: {result.total_nodes} nodes, "
+            f"{result.total_edges} edges, {result.total_chunks} chunks"
+        )
+    except Exception as e:
+        logger.error(f"Indexing failed for {repo_id}: {e}", exc_info=True)

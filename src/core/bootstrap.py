@@ -1,5 +1,7 @@
 """의존성 주입 및 포트 초기화"""
 
+from typing import Any
+
 from meilisearch import Client
 
 from ..search.adapters.lexical.meili_adapter import MeiliSearchAdapter
@@ -17,25 +19,29 @@ class Bootstrap:
         self._connection_string = self._build_connection_string()
 
         # 인스턴스 캐시 (lazy loading)
-        self._repo_store = None
-        self._graph_store = None
-        self._chunk_store = None
-        self._embedding_service = None
-        self._embedding_store = None
-        self._lexical_search = None
-        self._ir_builder = None
-        self._chunker = None
-        self._scanner = None
-        self._pipeline = None
-        self._semantic_search = None
-        self._graph_search = None
-        self._fuzzy_search = None
-        self._symbol_search = None
-        self._fusion_strategy = None
-        self._hybrid_retriever = None
-        self._ranker = None
-        self._context_packer = None
-        self._route_store = None
+        self._repo_store: Any = None
+        self._graph_store: Any = None
+        self._chunk_store: Any = None
+        self._embedding_service: Any = None
+        self._embedding_service_small: Any = None  # Phase 1: 3-small
+        self._embedding_service_large: Any = None  # Phase 1: 3-large
+        self._embedding_store: Any = None
+        self._semantic_node_store: Any = None  # Phase 1: semantic nodes
+        self._lexical_search: Any = None
+        self._ir_builder: Any = None
+        self._chunker: Any = None
+        self._scanner: Any = None
+        self._pipeline: Any = None
+        self._semantic_search: Any = None
+        self._graph_search: Any = None
+        self._fuzzy_search: Any = None
+        self._symbol_search: Any = None
+        self._fusion_strategy: Any = None
+        self._hybrid_retriever: Any = None
+        self._ranker: Any = None
+        self._context_packer: Any = None
+        self._route_store: Any = None
+        self._query_log_store: Any = None  # Phase 2
 
     def _build_connection_string(self) -> str:
         """PostgreSQL 연결 문자열 생성"""
@@ -80,7 +86,7 @@ class Bootstrap:
 
     @property
     def embedding_service(self):
-        """임베딩 서비스"""
+        """임베딩 서비스 (기본, 코드 청크용)"""
         if self._embedding_service is None:
             from ..embedding.service import EmbeddingService
 
@@ -91,6 +97,42 @@ class Bootstrap:
                 dimension=self.config.embedding_dimension,
             )
         return self._embedding_service
+
+    @property
+    def embedding_service_small(self):
+        """임베딩 서비스 (3-small, semantic nodes용)"""
+        if self._embedding_service_small is None:
+            import os
+
+            from ..core.enums import EmbeddingModel
+            from ..embedding.service import EmbeddingService
+
+            # OpenAI 전용이므로 OPENAI_API_KEY 직접 사용
+            openai_key = os.getenv("OPENAI_API_KEY") or self.config.embedding_api_key
+
+            self._embedding_service_small = EmbeddingService(
+                model=EmbeddingModel.OPENAI_3_SMALL,
+                api_key=openai_key,
+            )
+        return self._embedding_service_small
+
+    @property
+    def embedding_service_large(self):
+        """임베딩 서비스 (3-large, Phase 2 중요 노드용)"""
+        if self._embedding_service_large is None:
+            import os
+
+            from ..core.enums import EmbeddingModel
+            from ..embedding.service import EmbeddingService
+
+            # OpenAI 전용이므로 OPENAI_API_KEY 직접 사용
+            openai_key = os.getenv("OPENAI_API_KEY") or self.config.embedding_api_key
+
+            self._embedding_service_large = EmbeddingService(
+                model=EmbeddingModel.OPENAI_3_LARGE,
+                api_key=openai_key,
+            )
+        return self._embedding_service_large
 
     @property
     def embedding_store(self):
@@ -129,7 +171,7 @@ class Bootstrap:
             else:
                 raise ValueError(f"Unknown lexical search backend: {backend}")
 
-        return self._lexical_search
+        return self._lexical_search  # type: ignore[no-any-return]
 
     @property
     def ir_builder(self):
@@ -184,9 +226,12 @@ class Bootstrap:
                 scanner=self.scanner,
                 parse_cache=parse_cache,
                 route_store=self.route_store,
+                semantic_node_store=self.semantic_node_store,  # Phase 1
+                embedding_service_small=self.embedding_service_small,  # Phase 1
+                embedding_service_large=self.embedding_service_large,  # Phase 2용
             )
             # Config 전달 (병렬 처리 옵션용)
-            self._pipeline.config = self.config
+            self._pipeline.config = self.config  # type: ignore[attr-defined]
         return self._pipeline
 
     @property
@@ -271,6 +316,7 @@ class Bootstrap:
                 chunk_store=self.chunk_store,
                 config=self.config,
                 fusion_strategy=self.fusion_strategy,  # Fusion 전략 주입
+                query_log_store=self.query_log_store,  # Phase 2: Query logging
             )
         return self._hybrid_retriever
 
@@ -306,6 +352,32 @@ class Bootstrap:
                 pool_max=5,
             )
         return self._route_store
+
+    @property
+    def semantic_node_store(self):
+        """Semantic Node 스토어 (Phase 1)"""
+        if self._semantic_node_store is None:
+            from ..indexer.semantic_node_store import SemanticNodeStore
+
+            self._semantic_node_store = SemanticNodeStore(
+                connection_string=self._connection_string,
+                pool_size=2,
+                pool_max=10,
+            )
+        return self._semantic_node_store
+
+    @property
+    def query_log_store(self):
+        """Query Log 스토어 (Phase 2)"""
+        if self._query_log_store is None:
+            from ..search.query_log_store import QueryLogStore
+
+            self._query_log_store = QueryLogStore(
+                connection_string=self._connection_string,
+                pool_size=2,
+                pool_max=5,
+            )
+        return self._query_log_store
 
 
 def create_bootstrap(config: Config | None = None) -> Bootstrap:

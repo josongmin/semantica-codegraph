@@ -4,4 +4,3 @@
 cd "$(dirname "$0")"
 export PYTHONPATH="$(pwd):$PYTHONPATH"
 exec uv run python -m apps.api.main
-

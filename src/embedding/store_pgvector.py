@@ -1,6 +1,7 @@
 """pgvector 기반 임베딩 저장소"""
 
 import logging
+from typing import Any
 
 import psycopg2
 from psycopg2 import pool
@@ -359,7 +360,7 @@ class PgVectorStore(EmbeddingStorePort):
                     WHERE e.repo_id = %s AND e.model = %s
                 """
 
-                params = [vector, repo_id, self.model_name]
+                params: list[Any] = [vector, repo_id, self.model_name]
 
                 # 필터 추가
                 if filters:

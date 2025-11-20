@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS repo_profile (
     profile_data JSONB NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
-    
+
     FOREIGN KEY (repo_id) REFERENCES repo_metadata(repo_id) ON DELETE CASCADE
 );
 
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS file_profile (
     file_path TEXT NOT NULL,
     profile_data JSONB NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
-    
+
     UNIQUE(repo_id, file_path),
     FOREIGN KEY (repo_id) REFERENCES repo_metadata(repo_id) ON DELETE CASCADE
 );
@@ -49,4 +49,3 @@ COMMENT ON TABLE repo_profile IS '저장소 구조 프로파일 (검색 최적�
 COMMENT ON TABLE file_profile IS '파일 역할 프로파일 (검색 재순위화용)';
 COMMENT ON COLUMN code_chunks.metadata IS '청크 메타데이터 (API endpoint, http method 등)';
 COMMENT ON COLUMN code_nodes.importance_score IS '노드 중요도 점수 (PageRank 스타일)';
-

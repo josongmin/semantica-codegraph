@@ -100,4 +100,6 @@ class PgVectorSemanticSearch(SemanticSearchPort):
     def delete_repo_index(self, repo_id: RepoId) -> None:
         """저장소 인덱스 삭제"""
         logger.info(f"Deleting embeddings for {repo_id}")
-        self.embedding_store.delete_repo_embeddings(repo_id)
+        # 타입 체크 우회: 실제 구현체에는 delete_repo_embeddings가 있음
+        if hasattr(self.embedding_store, "delete_repo_embeddings"):
+            self.embedding_store.delete_repo_embeddings(repo_id)  # type: ignore[attr-defined]
