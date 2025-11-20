@@ -27,6 +27,7 @@ class Chunker:
     2. 큰 노드: 여러 청크로 분할 (max_lines)
     3. 작은 노드: 병합 (min_lines)
     4. 오버랩: 청크 간 컨텍스트 공유
+    5. File 요약: 조건부 파일 요약 청크 생성
     """
 
     def __init__(
@@ -36,6 +37,8 @@ class Chunker:
         overlap_lines: int = 5,
         strategy: str = "node_based",
         max_tokens: int | None = 7000,  # 임베딩 API 제한보다 낮게 설정 (안전 마진)
+        enable_file_summary: bool = True,  # 파일 요약 청크 생성 활성화
+        min_symbols_for_summary: int = 5,  # 파일 요약 생성 최소 심볼 개수
     ):
         """
         Args:
@@ -48,19 +51,32 @@ class Chunker:
                 - "hierarchical": 계층적 (Class + 각 Method)
             max_tokens: 청크 최대 토큰 수 (None이면 토큰 제한 없음)
                 - 기본값 7000은 대부분의 임베딩 모델의 8K 제한보다 낮게 설정 (안전 마진)
+            enable_file_summary: 조건부 파일 요약 청크 생성 활성화
+            min_symbols_for_summary: 파일 요약 청크를 생성할 최소 심볼 개수
         """
         self.max_lines = max_lines
         self.min_lines = min_lines
         self.overlap_lines = overlap_lines
         self.strategy = strategy
         self.max_tokens = max_tokens
+        self.enable_file_summary = enable_file_summary
+        self.min_symbols_for_summary = min_symbols_for_summary
+        
+        # FileSummaryBuilder 초기화 (lazy)
+        self._file_summary_builder = None
 
-    def chunk(self, nodes: list[CodeNode]) -> list[CodeChunk]:
+    def chunk(
+        self, 
+        nodes: list[CodeNode],
+        source_files: dict[str, str] | None = None,
+    ) -> list[CodeChunk]:
         """
         CodeNode 리스트를 CodeChunk 리스트로 변환
 
         Args:
             nodes: CodeNode 리스트
+            source_files: 파일별 소스 코드 (파일 요약 청크 생성용, optional)
+                         {file_path: source_code}
 
         Returns:
             CodeChunk 리스트
@@ -70,14 +86,14 @@ class Chunker:
             return []
 
         if self.strategy == "node_based":
-            chunks = self._chunk_node_based(nodes)
+            chunks = self._chunk_node_based(nodes, source_files)
         elif self.strategy == "size_based":
             chunks = self._chunk_size_based(nodes)
         elif self.strategy == "hierarchical":
             chunks = self._chunk_hierarchical(nodes)
         else:
             logger.warning(f"Unknown strategy: {self.strategy}, using node_based")
-            chunks = self._chunk_node_based(nodes)
+            chunks = self._chunk_node_based(nodes, source_files)
 
         logger.info(
             f"Chunked {len(nodes)} nodes into {len(chunks)} chunks (strategy={self.strategy})"
@@ -85,28 +101,43 @@ class Chunker:
 
         return chunks
 
-    def _chunk_node_based(self, nodes: list[CodeNode]) -> list[CodeChunk]:
+    def _chunk_node_based(
+        self, 
+        nodes: list[CodeNode],
+        source_files: dict[str, str] | None = None,
+    ) -> list[CodeChunk]:
         """
         Node 기반 청킹: 1 Node = 1 Chunk (병렬 처리)
+        + 조건부 파일 요약 청크 생성
 
         가장 단순하고 빠른 방식
         """
         # 병렬 처리 임계값
         if len(nodes) < 100:
             # 노드 수가 적으면 순차 처리 (오버헤드 방지)
-            return self._chunk_node_based_sequential(nodes)
+            return self._chunk_node_based_sequential(nodes, source_files)
 
-        # 병렬 처리
+        # 1. 파일별로 노드 그룹화
+        nodes_by_file = {}
+        file_nodes = {}  # file_path -> File 노드
+        
+        for node in nodes:
+            file_path = node.file_path
+            if file_path not in nodes_by_file:
+                nodes_by_file[file_path] = []
+            
+            if node.kind == "File":
+                file_nodes[file_path] = node
+            else:
+                nodes_by_file[file_path].append(node)
+
+        # 2. Symbol 노드 청크 생성 (병렬)
         from concurrent.futures import ThreadPoolExecutor
 
         chunks = []
 
         def process_node(node: CodeNode) -> list[CodeChunk]:
             """단일 노드 처리 (병렬 실행용)"""
-            # File 노드는 스킵
-            if node.kind == "File":
-                return []
-
             # 선택적 토큰 검증
             text_len = len(node.text)
 
@@ -123,22 +154,49 @@ class Chunker:
 
             return [self._node_to_chunk(node)]
 
-        # 병렬 실행
+        # Symbol 노드만 병렬 처리
+        symbol_nodes = [n for n in nodes if n.kind != "File"]
         with ThreadPoolExecutor(max_workers=4) as executor:
-            results = executor.map(process_node, nodes)
+            results = executor.map(process_node, symbol_nodes)
             for node_chunks in results:
                 chunks.extend(node_chunks)
 
+        # 3. 조건부 파일 요약 청크 생성
+        if self.enable_file_summary:
+            summary_chunks = self._create_file_summary_chunks(
+                file_nodes, nodes_by_file, source_files
+            )
+            chunks.extend(summary_chunks)
+            
+            if summary_chunks:
+                logger.info(f"Created {len(summary_chunks)} file summary chunks")
+
         return chunks
 
-    def _chunk_node_based_sequential(self, nodes: list[CodeNode]) -> list[CodeChunk]:
+    def _chunk_node_based_sequential(
+        self, 
+        nodes: list[CodeNode],
+        source_files: dict[str, str] | None = None,
+    ) -> list[CodeChunk]:
         """순차 처리 버전 (작은 프로젝트용)"""
         chunks = []
-
+        
+        # 파일별로 노드 그룹화
+        nodes_by_file = {}
+        file_nodes = {}
+        
         for node in nodes:
+            file_path = node.file_path
+            if file_path not in nodes_by_file:
+                nodes_by_file[file_path] = []
+            
             if node.kind == "File":
-                continue
-
+                file_nodes[file_path] = node
+                continue  # File 노드는 나중에 처리
+            
+            # Symbol 노드 청크 생성
+            nodes_by_file[file_path].append(node)
+            
             text_len = len(node.text)
 
             if self.max_tokens:
@@ -154,8 +212,18 @@ class Chunker:
                         chunks.extend(split_chunks)
                         continue
 
-                chunk = self._node_to_chunk(node)
-                chunks.append(chunk)
+            chunk = self._node_to_chunk(node)
+            chunks.append(chunk)
+        
+        # 조건부 파일 요약 청크 생성
+        if self.enable_file_summary:
+            summary_chunks = self._create_file_summary_chunks(
+                file_nodes, nodes_by_file, source_files
+            )
+            chunks.extend(summary_chunks)
+            
+            if summary_chunks:
+                logger.info(f"Created {len(summary_chunks)} file summary chunks")
 
         return chunks
 
@@ -392,12 +460,27 @@ class Chunker:
                 next_chunk_lines = lines[current_pos:next_end]
                 next_chunk_text = "\n".join(next_chunk_lines)
 
+                # 토큰 수 체크 (hard limit 적용)
                 if self._count_tokens(next_chunk_text) > self.max_tokens:
+                    break
+
+                # 문자 수 hard limit (안전장치)
+                MAX_CHARS = self.max_tokens * 4  # 보수적 추정
+                if len(next_chunk_text) > MAX_CHARS:
+                    logger.debug(
+                        f"Chunk exceeds char limit ({len(next_chunk_text)} > {MAX_CHARS}), splitting"
+                    )
                     break
 
                 end_pos = next_end
                 chunk_lines = next_chunk_lines
                 chunk_text = next_chunk_text
+
+            # 최소 1줄은 포함 (무한 루프 방지)
+            if end_pos == current_pos:
+                end_pos = current_pos + 1
+                chunk_lines = lines[current_pos:end_pos]
+                chunk_text = "\n".join(chunk_lines)
 
             # 청크 span 계산
             chunk_span = (
@@ -410,6 +493,14 @@ class Chunker:
             # 청크 생성
             chunk_id = f"{node.id}:chunk{chunk_idx}"
             token_count = self._count_tokens(chunk_text)
+
+            # 재확인: 여전히 큰 경우 경고
+            if token_count > self.max_tokens:
+                logger.warning(
+                    f"Chunk {chunk_id} still exceeds max_tokens after split: "
+                    f"{token_count} > {self.max_tokens} (will be skipped during embedding)"
+                )
+
             chunks.append(
                 CodeChunk(
                     repo_id=node.repo_id,
@@ -447,3 +538,59 @@ class Chunker:
             추정 토큰 수
         """
         return self._count_tokens(text)
+    
+    def _create_file_summary_chunks(
+        self,
+        file_nodes: dict[str, CodeNode],
+        nodes_by_file: dict[str, list[CodeNode]],
+        source_files: dict[str, str] | None,
+    ) -> list[CodeChunk]:
+        """
+        조건부 파일 요약 청크 생성
+        
+        Args:
+            file_nodes: file_path -> File 노드 매핑
+            nodes_by_file: file_path -> Symbol 노드 리스트
+            source_files: file_path -> 소스 코드 (optional)
+        
+        Returns:
+            파일 요약 청크 리스트
+        """
+        # FileSummaryBuilder lazy 초기화
+        if self._file_summary_builder is None:
+            from .file_summary_builder import FileSummaryBuilder
+            self._file_summary_builder = FileSummaryBuilder(
+                min_symbols_for_summary=self.min_symbols_for_summary
+            )
+        
+        summary_chunks = []
+        
+        for file_path, file_node in file_nodes.items():
+            symbol_nodes = nodes_by_file.get(file_path, [])
+            
+            # 파일 확장자 추출
+            from pathlib import Path
+            file_ext = Path(file_path).suffix.lower()
+            
+            # 요약 청크 생성 여부 결정
+            should_create = self._file_summary_builder.should_create_summary(
+                file_node, symbol_nodes, file_ext
+            )
+            
+            if should_create:
+                # 소스 코드 가져오기
+                file_content = None
+                if source_files and file_path in source_files:
+                    file_content = source_files[file_path]
+                
+                # 요약 청크 생성
+                try:
+                    summary_chunk = self._file_summary_builder.build_summary_chunk(
+                        file_node, symbol_nodes, file_content
+                    )
+                    summary_chunks.append(summary_chunk)
+                    logger.debug(f"Created file summary chunk for {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to create file summary for {file_path}: {e}")
+        
+        return summary_chunks

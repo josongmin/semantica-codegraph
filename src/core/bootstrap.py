@@ -1,5 +1,6 @@
 """의존성 주입 및 포트 초기화"""
 
+import logging
 from typing import Any
 
 from meilisearch import Client
@@ -9,6 +10,8 @@ from ..search.adapters.lexical.zoekt_adapter import ZoektAdapter
 from ..search.ports.lexical_search_port import LexicalSearchPort
 from .config import Config
 from .enums import LexicalSearchBackend
+
+logger = logging.getLogger(__name__)
 
 
 class Bootstrap:
@@ -26,6 +29,7 @@ class Bootstrap:
         self._embedding_service_small: Any = None  # Phase 1: 3-small
         self._embedding_service_large: Any = None  # Phase 1: 3-large
         self._embedding_store: Any = None
+        self._qdrant_store: Any = None  # Qdrant vector store
         self._semantic_node_store: Any = None  # Phase 1: semantic nodes
         self._lexical_search: Any = None
         self._ir_builder: Any = None
@@ -95,6 +99,7 @@ class Bootstrap:
                 api_key=self.config.embedding_api_key,
                 api_base=self.config.mistral_api_base,
                 dimension=self.config.embedding_dimension,
+                timeout=self.config.embedding_api_timeout,
             )
         return self._embedding_service
 
@@ -113,6 +118,7 @@ class Bootstrap:
             self._embedding_service_small = EmbeddingService(
                 model=EmbeddingModel.OPENAI_3_SMALL,
                 api_key=openai_key,
+                timeout=self.config.embedding_api_timeout,
             )
         return self._embedding_service_small
 
@@ -131,23 +137,60 @@ class Bootstrap:
             self._embedding_service_large = EmbeddingService(
                 model=EmbeddingModel.OPENAI_3_LARGE,
                 api_key=openai_key,
+                timeout=self.config.embedding_api_timeout,
             )
         return self._embedding_service_large
 
     @property
     def embedding_store(self):
-        """임베딩 스토어"""
-        if self._embedding_store is None:
-            from ..embedding.store_pgvector import PgVectorStore
+        """
+        임베딩 스토어 (자동 선택)
 
-            self._embedding_store = PgVectorStore(
-                connection_string=self._connection_string,
+        VECTOR_STORE_BACKEND에 따라 자동 선택:
+        - pgvector: PgVectorStore
+        - qdrant: QdrantStore
+        """
+        from ..core.enums import VectorStoreBackend
+
+        backend = self.config.vector_store_backend
+
+        if backend == VectorStoreBackend.QDRANT:
+            return self.qdrant_store
+        elif backend == VectorStoreBackend.PGVECTOR:
+            # PgVector
+            if self._embedding_store is None:
+                from ..embedding.store_pgvector import PgVectorStore
+
+                self._embedding_store = PgVectorStore(
+                    connection_string=self._connection_string,
+                    embedding_dimension=self.embedding_service.get_dimension(),
+                    model_name=self.config.embedding_model.value,
+                    pool_size=self.config.db_connection_pool_size,
+                    pool_max=self.config.db_connection_pool_max,
+                    skip_table_init=self.config.skip_table_init,
+                )
+            return self._embedding_store
+        else:
+            raise ValueError(f"Unknown vector store backend: {backend}")
+
+    @property
+    def qdrant_store(self):
+        """임베딩 스토어 (Qdrant)"""
+        if self._qdrant_store is None:
+            from ..embedding.store_qdrant import QdrantStore
+
+            self._qdrant_store = QdrantStore(
+                host=self.config.qdrant_host,
+                port=self.config.qdrant_port,
+                grpc_port=self.config.qdrant_grpc_port,
                 embedding_dimension=self.embedding_service.get_dimension(),
                 model_name=self.config.embedding_model.value,
-                pool_size=self.config.db_connection_pool_size,
-                pool_max=self.config.db_connection_pool_max,
+                use_grpc=self.config.qdrant_use_grpc,
+                api_key=self.config.qdrant_api_key,
+                timeout=self.config.qdrant_timeout,
+                chunk_store=self.chunk_store,
             )
-        return self._embedding_store
+        return self._qdrant_store
 
     @property
     def lexical_search(self) -> LexicalSearchPort:
@@ -192,6 +235,8 @@ class Bootstrap:
                 max_lines=self.config.chunker_max_lines,
                 overlap_lines=self.config.chunker_overlap_lines,
                 max_tokens=self.config.chunker_max_tokens,
+                enable_file_summary=self.config.chunker_enable_file_summary,
+                min_symbols_for_summary=self.config.chunker_min_symbols_for_summary,
             )
         return self._chunker
 
@@ -321,12 +366,88 @@ class Bootstrap:
         return self._hybrid_retriever
 
     @property
-    def ranker(self):
-        """랭커"""
+    def reranker(self):
+        """리랭커"""
         if self._ranker is None:
-            from ..search.adapters.ranking.ranker import Ranker
+            reranker_type = self.config.reranker_type
 
-            self._ranker = Ranker()
+            if reranker_type == "two-stage":
+                # Two-Stage Reranker (Feature + LLM + Fusion)
+                from ..search.adapters.ranking.llm_reranker import LLMReranker
+                from ..search.adapters.ranking.llm_service import LLMScoringService
+                from ..search.adapters.ranking.two_stage_reranker import TwoStageReranker
+
+                # LLM API 키 확인
+                if not self.config.llm_api_key:
+                    raise ValueError(
+                        "LLM_API_KEY or MISTRAL_API_KEY environment variable is required "
+                        "for 'two-stage' reranker type"
+                    )
+
+                # 1단계: Feature-based reranker 선택
+                from ..search.adapters.ranking.hybrid_reranker import HybridReranker
+                from ..search.adapters.ranking.reranker import Reranker
+
+                feature_reranker_type = self.config.two_stage_feature_reranker
+                feature_reranker: HybridReranker | Reranker
+                if feature_reranker_type == "hybrid":
+                    feature_reranker = HybridReranker(debug_mode=self.config.reranker_debug_mode)
+                else:  # "basic"
+                    feature_reranker = Reranker()
+
+                # LLM Scoring Service 생성
+                llm_service = LLMScoringService(
+                    api_key=self.config.llm_api_key,
+                    model=self.config.llm_model,
+                    temperature=self.config.llm_temperature,
+                    max_tokens=self.config.llm_max_tokens,
+                )
+
+                # LLM Reranker 생성
+                llm_reranker = LLMReranker(llm_service=llm_service)
+
+                # Two-Stage Reranker 생성
+                self._ranker = TwoStageReranker(
+                    feature_reranker=feature_reranker,
+                    llm_reranker=llm_reranker,
+                    top_m=self.config.two_stage_top_m,
+                    alpha=self.config.two_stage_alpha,
+                    fallback_to_feature=self.config.two_stage_fallback,
+                )
+                logger.info(
+                    f"Using TwoStageReranker "
+                    f"(feature={feature_reranker_type}, top_m={self.config.two_stage_top_m}, "
+                    f"alpha={self.config.two_stage_alpha}, llm_model={self.config.llm_model})"
+                )
+
+            elif reranker_type == "hybrid":
+                from ..search.adapters.ranking.hybrid_reranker import HybridReranker
+
+                self._ranker = HybridReranker(debug_mode=self.config.reranker_debug_mode)
+                logger.info("Using HybridReranker")
+
+            elif reranker_type == "morph":
+                from ..search.adapters.ranking.morph_reranker import MorphReranker
+
+                if not self.config.morph_api_key:
+                    raise ValueError(
+                        "MORPH_API_KEY environment variable is required for 'morph' reranker type"
+                    )
+
+                self._ranker = MorphReranker(
+                    api_key=self.config.morph_api_key,
+                    api_base=self.config.morph_api_base,
+                    model=self.config.morph_model,
+                    top_k=self.config.morph_top_k,
+                )
+                logger.info(f"Using MorphReranker (model={self.config.morph_model})")
+
+            else:  # "basic" or unknown
+                from ..search.adapters.ranking.reranker import Reranker
+
+                self._ranker = Reranker()
+                logger.info("Using basic Reranker")
+
         return self._ranker
 
     @property
