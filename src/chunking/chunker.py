@@ -1,8 +1,14 @@
 """Chunker: CodeNode → CodeChunk 변환"""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from ..core.models import CodeChunk, CodeNode
+
+if TYPE_CHECKING:
+    from .file_summary_builder import FileSummaryBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +67,12 @@ class Chunker:
         self.max_tokens = max_tokens
         self.enable_file_summary = enable_file_summary
         self.min_symbols_for_summary = min_symbols_for_summary
-        
+
         # FileSummaryBuilder 초기화 (lazy)
-        self._file_summary_builder = None
+        self._file_summary_builder: FileSummaryBuilder | None = None
 
     def chunk(
-        self, 
+        self,
         nodes: list[CodeNode],
         source_files: dict[str, str] | None = None,
     ) -> list[CodeChunk]:
@@ -102,7 +108,7 @@ class Chunker:
         return chunks
 
     def _chunk_node_based(
-        self, 
+        self,
         nodes: list[CodeNode],
         source_files: dict[str, str] | None = None,
     ) -> list[CodeChunk]:
@@ -118,14 +124,14 @@ class Chunker:
             return self._chunk_node_based_sequential(nodes, source_files)
 
         # 1. 파일별로 노드 그룹화
-        nodes_by_file = {}
-        file_nodes = {}  # file_path -> File 노드
-        
+        nodes_by_file: dict[str, list[CodeNode]] = {}
+        file_nodes: dict[str, CodeNode] = {}  # file_path -> File 노드
+
         for node in nodes:
             file_path = node.file_path
             if file_path not in nodes_by_file:
                 nodes_by_file[file_path] = []
-            
+
             if node.kind == "File":
                 file_nodes[file_path] = node
             else:
@@ -167,36 +173,36 @@ class Chunker:
                 file_nodes, nodes_by_file, source_files
             )
             chunks.extend(summary_chunks)
-            
+
             if summary_chunks:
                 logger.info(f"Created {len(summary_chunks)} file summary chunks")
 
         return chunks
 
     def _chunk_node_based_sequential(
-        self, 
+        self,
         nodes: list[CodeNode],
         source_files: dict[str, str] | None = None,
     ) -> list[CodeChunk]:
         """순차 처리 버전 (작은 프로젝트용)"""
         chunks = []
-        
+
         # 파일별로 노드 그룹화
-        nodes_by_file = {}
-        file_nodes = {}
-        
+        nodes_by_file: dict[str, list[CodeNode]] = {}
+        file_nodes: dict[str, CodeNode] = {}
+
         for node in nodes:
             file_path = node.file_path
             if file_path not in nodes_by_file:
                 nodes_by_file[file_path] = []
-            
+
             if node.kind == "File":
                 file_nodes[file_path] = node
                 continue  # File 노드는 나중에 처리
-            
+
             # Symbol 노드 청크 생성
             nodes_by_file[file_path].append(node)
-            
+
             text_len = len(node.text)
 
             if self.max_tokens:
@@ -214,14 +220,14 @@ class Chunker:
 
             chunk = self._node_to_chunk(node)
             chunks.append(chunk)
-        
+
         # 조건부 파일 요약 청크 생성
         if self.enable_file_summary:
             summary_chunks = self._create_file_summary_chunks(
                 file_nodes, nodes_by_file, source_files
             )
             chunks.extend(summary_chunks)
-            
+
             if summary_chunks:
                 logger.info(f"Created {len(summary_chunks)} file summary chunks")
 
@@ -538,7 +544,7 @@ class Chunker:
             추정 토큰 수
         """
         return self._count_tokens(text)
-    
+
     def _create_file_summary_chunks(
         self,
         file_nodes: dict[str, CodeNode],
@@ -547,42 +553,44 @@ class Chunker:
     ) -> list[CodeChunk]:
         """
         조건부 파일 요약 청크 생성
-        
+
         Args:
             file_nodes: file_path -> File 노드 매핑
             nodes_by_file: file_path -> Symbol 노드 리스트
             source_files: file_path -> 소스 코드 (optional)
-        
+
         Returns:
             파일 요약 청크 리스트
         """
         # FileSummaryBuilder lazy 초기화
         if self._file_summary_builder is None:
             from .file_summary_builder import FileSummaryBuilder
+
             self._file_summary_builder = FileSummaryBuilder(
                 min_symbols_for_summary=self.min_symbols_for_summary
             )
-        
+
         summary_chunks = []
-        
+
         for file_path, file_node in file_nodes.items():
             symbol_nodes = nodes_by_file.get(file_path, [])
-            
+
             # 파일 확장자 추출
             from pathlib import Path
+
             file_ext = Path(file_path).suffix.lower()
-            
+
             # 요약 청크 생성 여부 결정
             should_create = self._file_summary_builder.should_create_summary(
                 file_node, symbol_nodes, file_ext
             )
-            
+
             if should_create:
                 # 소스 코드 가져오기
                 file_content = None
                 if source_files and file_path in source_files:
                     file_content = source_files[file_path]
-                
+
                 # 요약 청크 생성
                 try:
                     summary_chunk = self._file_summary_builder.build_summary_chunk(
@@ -592,5 +600,5 @@ class Chunker:
                     logger.debug(f"Created file summary chunk for {file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to create file summary for {file_path}: {e}")
-        
+
         return summary_chunks

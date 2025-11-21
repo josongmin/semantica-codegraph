@@ -24,7 +24,7 @@ if node.kind == "File":
 
 **1. 모든 File 노드를 청크로 변환**
 - 장점: 모든 파일 검색 가능
-- 단점: 
+- 단점:
   - Symbol 청크와 내용 중복
   - 큰 파일은 토큰 제한 초과
   - 비용 증가 (임베딩/저장)
@@ -158,4 +158,3 @@ src/core/ports.py: 30개 Symbol 청크 + 1개 요약 청크
 - `src/chunking/chunker.py`
 - `src/chunking/file_summary_builder.py`
 - `docs/chunking-pipeline.md`
-
