@@ -104,7 +104,7 @@ def setup_telemetry(
 
     sampler = TraceIdRatioBased(sample_rate)
     provider = TracerProvider(resource=resource, sampler=sampler)
-    
+
     # OTLP Exporter (Jaeger/Tempo)
     otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
     provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
@@ -183,19 +183,19 @@ class IndexingPipeline:
         with tracer.start_as_current_span("index_repository") as span:
             span.set_attribute("repo.id", repo_config.repo_id)
             span.set_attribute("repo.file_count", len(files))
-            
+
             # 파싱
             with tracer.start_as_current_span("parse_files"):
                 parsed = await self._parse_files(files)
-            
+
             # IR 빌드
             with tracer.start_as_current_span("build_ir"):
                 ir_nodes = self.ir_builder.build(parsed)
-            
+
             # 청킹
             with tracer.start_as_current_span("chunking"):
                 chunks = self.chunker.chunk(ir_nodes)
-            
+
             # 임베딩
             with tracer.start_as_current_span("embedding") as emb_span:
                 emb_span.set_attribute("chunk.count", len(chunks))
@@ -209,17 +209,17 @@ class IndexingPipeline:
 with tracer.start_as_current_span("hybrid_search") as span:
     span.set_attribute("query", query)
     span.set_attribute("retrieve_k", retrieve_k)
-    
+
     # 병렬 검색
     with tracer.start_as_current_span("parallel_retrieval"):
         lexical = await self.lexical.search(query)
         semantic = await self.semantic.search(query)
         graph = await self.graph.search(query)
-    
+
     # 퓨전
     with tracer.start_as_current_span("fusion"):
         merged = self.fusion.merge(lexical, semantic, graph)
-    
+
     # 리랭킹
     with tracer.start_as_current_span("reranking") as rerank_span:
         rerank_span.set_attribute("reranker.type", "hybrid")
@@ -351,4 +351,3 @@ if config.otel_enabled:
     with tracer.start_span("index"):
         ...
 ```
-

@@ -95,7 +95,7 @@ scrape_configs:
   - job_name: 'otel-collector'
     static_configs:
       - targets: ['otel-collector:8889']
-  
+
   - job_name: 'semantica-api'
     static_configs:
       - targets: ['host.docker.internal:8000']
@@ -117,7 +117,7 @@ processors:
   batch:
     timeout: 1s
     send_batch_size: 1024
-  
+
   memory_limiter:
     check_interval: 1s
     limit_mib: 512
@@ -127,10 +127,10 @@ exporters:
     endpoint: jaeger:14250
     tls:
       insecure: true
-  
+
   prometheus:
     endpoint: "0.0.0.0:8889"
-  
+
   logging:
     loglevel: info
 
@@ -140,7 +140,7 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [jaeger, logging]
-    
+
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
@@ -161,7 +161,7 @@ datasources:
     access: proxy
     url: http://jaeger:16686
     isDefault: false
-  
+
   - name: Prometheus
     type: prometheus
     access: proxy
@@ -422,4 +422,3 @@ export OTEL_SAMPLE_RATE=0.01  # 1%
 - 샘플링 최적화 (1-10%)
 - 자동화된 모니터링
 ```
-

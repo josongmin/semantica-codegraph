@@ -24,7 +24,7 @@
       ├→ Semantic Search (Qdrant + Mistral API)
       ├→ Graph Search (PostgreSQL)
       └→ Reranker (LLM API)
-      
+
 각 단계 병목 추적 필요
 ```
 
@@ -333,4 +333,3 @@ Phase 3 (프로덕션) → 전체 스택 + 대시보드
 - LLM 비용 10-20% 절감
 - 병목 진단 시간 90% 단축
 - 프로덕션 신뢰성 향상
-

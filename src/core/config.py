@@ -130,6 +130,10 @@ class Config:
     otel_service_name: str = "semantica-codegraph"  # 서비스 이름
     environment: str = "development"  # 환경 (development, staging, production)
 
+    # Phoenix 설정 (RAG 품질 추적)
+    phoenix_enabled: bool = False  # Phoenix 활성화
+    phoenix_port: int = 6006  # Phoenix UI 포트
+
     def __post_init__(self):
         """기본값 초기화"""
         # Edge 타입별 기본 가중치 (중요도 순)
@@ -275,4 +279,6 @@ class Config:
             otel_sample_rate=float(os.getenv("OTEL_SAMPLE_RATE", "1.0")),
             otel_service_name=os.getenv("OTEL_SERVICE_NAME", "semantica-codegraph"),
             environment=os.getenv("ENVIRONMENT", "development"),
+            phoenix_enabled=os.getenv("PHOENIX_ENABLED", "false").lower() == "true",
+            phoenix_port=int(os.getenv("PHOENIX_PORT", "6006")),
         )

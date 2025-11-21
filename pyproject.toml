@@ -57,6 +57,7 @@ otel = [
     "opentelemetry-instrumentation-psycopg2>=0.41b0",
     "opentelemetry-exporter-otlp>=1.20.0",
     "openlit>=1.0.0",  # LLM 호출 추적
+    "arize-phoenix>=4.0.0",  # RAG 품질 추적 및 임베딩 시각화
 ]
 
 [tool.setuptools.packages.find]

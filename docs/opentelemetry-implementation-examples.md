@@ -11,13 +11,13 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     # ... 기존 설정
-    
+
     # OpenTelemetry 설정
     otel_enabled: bool = False
     otel_endpoint: str = "http://localhost:4317"
     otel_sample_rate: float = 1.0
     environment: str = "development"
-    
+
     @classmethod
     def from_env(cls) -> "Config":
         return cls(
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 class TelemetryManager:
     """OpenTelemetry 초기화 및 관리"""
-    
+
     def __init__(
         self,
         service_name: str,
@@ -62,28 +62,28 @@ class TelemetryManager:
     ):
         self.enabled = enabled
         self.service_name = service_name
-        
+
         if not enabled:
             logger.info("OpenTelemetry disabled")
             return
-        
+
         # Resource 생성
         resource = Resource.create({
             SERVICE_NAME: service_name,
             SERVICE_VERSION: service_version,
             "deployment.environment": environment,
         })
-        
+
         # Trace Provider 설정
         sampler = TraceIdRatioBased(sample_rate)
         trace_provider = TracerProvider(resource=resource, sampler=sampler)
-        
+
         otlp_trace_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
         trace_provider.add_span_processor(
             BatchSpanProcessor(otlp_trace_exporter)
         )
         trace.set_tracer_provider(trace_provider)
-        
+
         # Metric Provider 설정
         metric_reader = PeriodicExportingMetricReader(
             OTLPMetricExporter(endpoint=otlp_endpoint)
@@ -93,18 +93,18 @@ class TelemetryManager:
             metric_readers=[metric_reader]
         )
         metrics.set_meter_provider(metric_provider)
-        
+
         logger.info(
             f"OpenTelemetry initialized: service={service_name}, "
             f"endpoint={otlp_endpoint}, sample_rate={sample_rate}"
         )
-    
+
     def get_tracer(self, name: str) -> trace.Tracer:
         """Tracer 가져오기"""
         if not self.enabled:
             return trace.get_tracer(name)
         return trace.get_tracer(name, self.service_name)
-    
+
     def get_meter(self, name: str) -> metrics.Meter:
         """Meter 가져오기"""
         if not self.enabled:
@@ -155,22 +155,22 @@ from src.core.telemetry import init_telemetry
 class Bootstrap:
     def __init__(self, config: Config):
         self.config = config
-        
+
         # OpenTelemetry 초기화
         self.telemetry = init_telemetry("semantica-codegraph", config)
-        
+
         # 자동 계측 (FastAPI 앱이 있는 경우)
         if config.otel_enabled:
             self._setup_auto_instrumentation()
-        
+
         # ... 기존 초기화
-    
+
     def _setup_auto_instrumentation(self):
         """자동 계측 설정"""
         try:
             from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
             from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
-            
+
             HTTPXClientInstrumentor().instrument()
             Psycopg2Instrumentor().instrument()
         except ImportError:
@@ -209,40 +209,40 @@ class IndexingPipeline:
         self, repo_config: RepoConfig
     ) -> RepoProfile:
         start_time = time.time()
-        
+
         with tracer.start_as_current_span("index_repository") as span:
             span.set_attribute("repo.id", repo_config.repo_id)
             span.set_attribute("repo.path", repo_config.repo_path)
             span.set_attribute("repo.languages", ",".join(repo_config.languages))
-            
+
             try:
                 # 1. 파일 스캔
                 with tracer.start_as_current_span("scan_files"):
                     files = self.scanner.scan(repo_config.repo_path)
                     span.set_attribute("files.count", len(files))
-                
+
                 # 2. 파싱
                 with tracer.start_as_current_span("parse_files") as parse_span:
                     parsed = await self._parse_files_async(files)
                     parse_span.set_attribute("files.parsed", len(parsed))
                     parse_span.set_attribute("files.failed", len(files) - len(parsed))
-                
+
                 # 3. IR 빌드
                 with tracer.start_as_current_span("build_ir") as ir_span:
                     ir_nodes = self.ir_builder.build(parsed)
                     ir_span.set_attribute("ir_nodes.count", len(ir_nodes))
-                
+
                 # 4. 청킹
                 with tracer.start_as_current_span("chunking") as chunk_span:
                     chunks = self.chunker.chunk(ir_nodes)
                     chunk_span.set_attribute("chunks.count", len(chunks))
                     chunks_created.add(len(chunks), {"repo_id": repo_config.repo_id})
-                
+
                 # 5. 임베딩
                 with tracer.start_as_current_span("embedding") as emb_span:
                     await self.embedding_store.store_embeddings(chunks)
                     emb_span.set_attribute("embeddings.count", len(chunks))
-                
+
                 # 메트릭 기록
                 duration = time.time() - start_time
                 indexing_duration.record(
@@ -250,10 +250,10 @@ class IndexingPipeline:
                     {"repo_id": repo_config.repo_id, "status": "success"}
                 )
                 files_indexed.add(len(files), {"repo_id": repo_config.repo_id})
-                
+
                 span.set_status(trace.Status(trace.StatusCode.OK))
                 return profile
-                
+
             except Exception as e:
                 span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
                 span.record_exception(e)
@@ -291,45 +291,45 @@ class HybridRetriever:
         self, query: str, retrieve_k: int = 100
     ) -> list[SearchResult]:
         start_time = time.time()
-        
+
         with tracer.start_as_current_span("hybrid_search") as span:
             span.set_attribute("query", query[:100])  # 100자만
             span.set_attribute("retrieve_k", retrieve_k)
-            
+
             try:
                 # 병렬 검색
                 with tracer.start_as_current_span("parallel_retrieval") as ret_span:
                     lexical_task = self.lexical.search(query)
                     semantic_task = self.semantic.search(query)
                     graph_task = self.graph.search(query)
-                    
+
                     lexical, semantic, graph = await asyncio.gather(
                         lexical_task, semantic_task, graph_task
                     )
-                    
+
                     ret_span.set_attribute("lexical.count", len(lexical))
                     ret_span.set_attribute("semantic.count", len(semantic))
                     ret_span.set_attribute("graph.count", len(graph))
-                
+
                 # 퓨전
                 with tracer.start_as_current_span("fusion") as fusion_span:
                     merged = self.fusion.merge(lexical, semantic, graph)
                     fusion_span.set_attribute("merged.count", len(merged))
-                
+
                 # 리랭킹
                 with tracer.start_as_current_span("reranking") as rerank_span:
                     results = await self.reranker.rerank(merged, query)
                     rerank_span.set_attribute("results.count", len(results))
                     rerank_span.set_attribute("reranker.type", type(self.reranker).__name__)
-                
+
                 # 메트릭
                 duration = time.time() - start_time
                 search_latency.record(duration, {"status": "success"})
                 search_requests.add(1, {"status": "success"})
-                
+
                 span.set_status(trace.Status(trace.StatusCode.OK))
                 return results
-                
+
             except Exception as e:
                 span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
                 span.record_exception(e)
@@ -377,15 +377,15 @@ app = FastAPI()
 @app.on_event("startup")
 async def startup():
     bootstrap = create_bootstrap()
-    
+
     # OpenTelemetry 초기화
     if bootstrap.config.otel_enabled:
         init_telemetry("semantica-codegraph-api", bootstrap.config)
-        
+
         # FastAPI 자동 계측
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
         FastAPIInstrumentor.instrument_app(app)
-        
+
         # OpenLIT 초기화 (LLM 추적)
         try:
             import openlit
@@ -395,7 +395,7 @@ async def startup():
             )
         except ImportError:
             logger.warning("OpenLIT not installed")
-    
+
     app.state.bootstrap = bootstrap
 
 
@@ -405,7 +405,7 @@ async def search(request: SearchRequest):
     # 추가 span 필요시:
     from src.core.telemetry import get_tracer
     tracer = get_tracer(__name__)
-    
+
     with tracer.start_as_current_span("api.search") as span:
         span.set_attribute("query", request.query)
         results = await app.state.bootstrap.hybrid_retriever.search(
@@ -458,7 +458,7 @@ from src.core.telemetry import TelemetryManager, get_tracer
 def test_telemetry_disabled():
     tm = TelemetryManager("test-service", enabled=False)
     tracer = tm.get_tracer("test")
-    
+
     with tracer.start_as_current_span("test_span"):
         pass  # 오버헤드 없음
 
@@ -470,9 +470,8 @@ def test_telemetry_enabled():
         sample_rate=1.0,
     )
     tracer = tm.get_tracer("test")
-    
+
     with tracer.start_as_current_span("test_span") as span:
         span.set_attribute("test.key", "value")
         # Jaeger에서 확인 가능
 ```
-

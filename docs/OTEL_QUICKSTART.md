@@ -84,7 +84,7 @@ curl -X POST http://localhost:8000/api/search \
 POST /api/search
 ├─ hybrid_search (전체)
 │  ├─ lexical_search
-│  ├─ semantic_search  
+│  ├─ semantic_search
 │  ├─ graph_search
 │  └─ fuzzy_search
 └─ reranking (선택)
@@ -97,7 +97,7 @@ POST /api/search
   - 토큰 수
   - 레이턴시
   - 비용 (자동 계산)
-  
+
 - 리랭킹 LLM 호출 (설정 시)
   - 모델: gpt-4o-mini 등
   - 토큰 수
@@ -173,14 +173,13 @@ OpenLIT 대시보드에서 확인:
 ## FAQ
 
 **Q: 개발 중에도 켜놓을까요?**
-A: 샘플링 1.0으로 설정하면 오버헤드가 거의 없습니다. 
+A: 샘플링 1.0으로 설정하면 오버헤드가 거의 없습니다.
    병목 확인에 유용하므로 켜놓는 것을 추천합니다.
 
 **Q: 프로덕션에서는?**
-A: 샘플링을 0.1 (10%)로 낮추고, 
+A: 샘플링을 0.1 (10%)로 낮추고,
    Prometheus + Grafana 추가를 권장합니다.
 
 **Q: 비용이 많이 들까요?**
 A: 개발 환경에서는 무료입니다 (Jaeger local).
    프로덕션에서도 self-hosted 시 서버 비용만 발생합니다.
-

@@ -10,6 +10,7 @@ from ..search.adapters.lexical.zoekt_adapter import ZoektAdapter
 from ..search.ports.lexical_search_port import LexicalSearchPort
 from .config import Config
 from .enums import LexicalSearchBackend
+from .phoenix_integration import init_phoenix
 from .telemetry import init_telemetry, setup_auto_instrumentation
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,12 @@ class Bootstrap:
         self.telemetry = init_telemetry(config.otel_service_name, config)
         if config.otel_enabled:
             setup_auto_instrumentation()
+
+        # Phoenix 초기화 (RAG 품질 추적)
+        self.phoenix = init_phoenix(
+            enabled=config.phoenix_enabled,
+            port=config.phoenix_port,
+        )
 
         # 인스턴스 캐시 (lazy loading)
         self._repo_store: Any = None

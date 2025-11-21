@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from src.core.config import Config
 from src.core.models import Candidate, ChunkResult, LocationContext, RepoId
+from src.core.phoenix_integration import get_phoenix
 from src.core.ports import ChunkStorePort
 from src.core.telemetry import get_tracer
 from src.search.adapters.fusion import FusionStrategy, WeightedFusion
@@ -120,7 +121,9 @@ class HybridRetriever:
                         results = self._retrieve_parallel(repo_id, query, k, location_ctx, weights)
                     else:
                         # 순차 검색 (기존 방식)
-                        results = self._retrieve_sequential(repo_id, query, k, location_ctx, weights)
+                        results = self._retrieve_sequential(
+                            repo_id, query, k, location_ctx, weights
+                        )
 
                     span.set_attribute("results.count", len(results))
                     return self._finish_retrieve(
@@ -140,7 +143,9 @@ class HybridRetriever:
                 # 순차 검색 (기존 방식)
                 results = self._retrieve_sequential(repo_id, query, k, location_ctx, weights)
 
-            return self._finish_retrieve(results, repo_id, query, query_type, k, weights, start_time)
+            return self._finish_retrieve(
+                results, repo_id, query, query_type, k, weights, start_time
+            )
 
     def _finish_retrieve(
         self,
@@ -154,6 +159,35 @@ class HybridRetriever:
     ) -> list[Candidate]:
         """검색 완료 처리 (로깅)"""
         import time
+
+        # Phoenix: 검색 품질 로깅
+        phoenix = get_phoenix()
+        if phoenix and phoenix.enabled:
+            try:
+                documents = [
+                    {
+                        "id": c.chunk_id,
+                        "content": f"{c.file_path}",
+                        "file_path": c.file_path,
+                        "score": c.features.get("final_score", 0),
+                    }
+                    for c in results[:20]  # Top 20만
+                ]
+                scores = [c.features.get("final_score", 0) for c in results[:20]]
+
+                phoenix.log_retrieval(
+                    query=query,
+                    documents=documents,
+                    scores=scores,
+                    metadata={
+                        "repo_id": repo_id,
+                        "k": k,
+                        "weights": weights,
+                        "query_type": query_type,
+                    },
+                )
+            except Exception as e:
+                logger.debug(f"Phoenix logging failed: {e}")
 
         # Phase 2: Query logging
         if self.enable_query_logging and self.query_log_store:

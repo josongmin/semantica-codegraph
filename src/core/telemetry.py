@@ -7,7 +7,6 @@
 """
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +106,7 @@ class TelemetryManager:
 
 
 # 전역 인스턴스 (Bootstrap에서 초기화)
-_telemetry_manager: Optional[TelemetryManager] = None
+_telemetry_manager: TelemetryManager | None = None
 
 
 def init_telemetry(service_name: str, config) -> TelemetryManager:
@@ -188,4 +187,3 @@ def setup_auto_instrumentation():
         logger.info("Auto instrumentation enabled: httpx, psycopg2")
     except ImportError:
         logger.warning("Auto instrumentation libraries not installed")
-
