@@ -3,6 +3,7 @@
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from src.core.config import Config
 from src.core.models import Candidate, ChunkResult, LocationContext, RepoId
@@ -724,6 +725,35 @@ class HybridRetriever:
         """병렬 검색 (ThreadPoolExecutor 사용)"""
         candidates: dict[str, Candidate] = {}  # chunk_id -> Candidate
 
+        # OpenTelemetry: 병렬 검색 span
+        if tracer:
+            with tracer.start_as_current_span("parallel_retrieval") as ret_span:
+                ret_span.set_attribute("weights.lexical", weights.get("lexical", 0))
+                ret_span.set_attribute("weights.semantic", weights.get("semantic", 0))
+                ret_span.set_attribute("weights.graph", weights.get("graph", 0))
+                ret_span.set_attribute("weights.fuzzy", weights.get("fuzzy", 0))
+
+                result = self._execute_parallel_search(
+                    repo_id, query, k, location_ctx, weights, candidates
+                )
+
+                ret_span.set_attribute("candidates.merged", len(result))
+                return result
+        else:
+            return self._execute_parallel_search(
+                repo_id, query, k, location_ctx, weights, candidates
+            )
+
+    def _execute_parallel_search(
+        self,
+        repo_id: RepoId,
+        query: str,
+        k: int,
+        location_ctx: LocationContext | None,
+        weights: dict[str, float],
+        candidates: dict[str, Candidate],
+    ) -> list[Candidate]:
+        """병렬 검색 실행 (span 분리용)"""
         # ThreadPoolExecutor로 병렬 실행
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = []
@@ -788,24 +818,55 @@ class HybridRetriever:
         weight: float,
     ) -> list[Candidate]:
         """Lexical 검색"""
-        try:
-            lexical_k = int(k * self.config.lexical_fetch_ratio)
-            lexical_results = self.lexical_search.search(
-                repo_id=repo_id,
-                query=query,
-                k=lexical_k,
-                filters=location_ctx.filters if location_ctx else None,
-            )
+        if tracer:
+            with tracer.start_as_current_span("lexical_search") as span:
+                try:
+                    lexical_k = int(k * self.config.lexical_fetch_ratio)
+                    span.set_attribute("fetch_k", lexical_k)
+                    span.set_attribute("weight", weight)
 
-            return [
-                self._result_to_candidate(
-                    result, lexical_score=self._normalize_lexical_score(result.score)
+                    lexical_results = self.lexical_search.search(
+                        repo_id=repo_id,
+                        query=query,
+                        k=lexical_k,
+                        filters=location_ctx.filters if location_ctx else None,
+                    )
+
+                    span.set_attribute("results.count", len(lexical_results))
+                    if lexical_results:
+                        span.set_attribute("results.top_score", lexical_results[0].score)
+
+                    return [
+                        self._result_to_candidate(
+                            result, lexical_score=self._normalize_lexical_score(result.score)
+                        )
+                        for result in lexical_results
+                    ]
+                except Exception as e:
+                    if span:
+                        span.record_exception(e)
+                        span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    logger.error(f"Lexical search failed: {e}")
+                    return []
+        else:
+            try:
+                lexical_k = int(k * self.config.lexical_fetch_ratio)
+                lexical_results = self.lexical_search.search(
+                    repo_id=repo_id,
+                    query=query,
+                    k=lexical_k,
+                    filters=location_ctx.filters if location_ctx else None,
                 )
-                for result in lexical_results
-            ]
-        except Exception as e:
-            logger.error(f"Lexical search failed: {e}")
-            return []
+
+                return [
+                    self._result_to_candidate(
+                        result, lexical_score=self._normalize_lexical_score(result.score)
+                    )
+                    for result in lexical_results
+                ]
+            except Exception as e:
+                logger.error(f"Lexical search failed: {e}")
+                return []
 
     def _search_semantic(
         self,
@@ -816,24 +877,55 @@ class HybridRetriever:
         weight: float,
     ) -> list[Candidate]:
         """Semantic 검색"""
-        try:
-            semantic_k = int(k * self.config.semantic_fetch_ratio)
-            semantic_results = self.semantic_search.search(
-                repo_id=repo_id,
-                query=query,
-                k=semantic_k,
-                filters=location_ctx.filters if location_ctx else None,
-            )
+        if tracer:
+            with tracer.start_as_current_span("semantic_search") as span:
+                try:
+                    semantic_k = int(k * self.config.semantic_fetch_ratio)
+                    span.set_attribute("fetch_k", semantic_k)
+                    span.set_attribute("weight", weight)
 
-            return [
-                self._result_to_candidate(
-                    result, semantic_score=self._normalize_semantic_score(result.score)
+                    semantic_results = self.semantic_search.search(
+                        repo_id=repo_id,
+                        query=query,
+                        k=semantic_k,
+                        filters=location_ctx.filters if location_ctx else None,
+                    )
+
+                    span.set_attribute("results.count", len(semantic_results))
+                    if semantic_results:
+                        span.set_attribute("results.top_score", semantic_results[0].score)
+
+                    return [
+                        self._result_to_candidate(
+                            result, semantic_score=self._normalize_semantic_score(result.score)
+                        )
+                        for result in semantic_results
+                    ]
+                except Exception as e:
+                    if span:
+                        span.record_exception(e)
+                        span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    logger.error(f"Semantic search failed: {e}")
+                    return []
+        else:
+            try:
+                semantic_k = int(k * self.config.semantic_fetch_ratio)
+                semantic_results = self.semantic_search.search(
+                    repo_id=repo_id,
+                    query=query,
+                    k=semantic_k,
+                    filters=location_ctx.filters if location_ctx else None,
                 )
-                for result in semantic_results
-            ]
-        except Exception as e:
-            logger.error(f"Semantic search failed: {e}")
-            return []
+
+                return [
+                    self._result_to_candidate(
+                        result, semantic_score=self._normalize_semantic_score(result.score)
+                    )
+                    for result in semantic_results
+                ]
+            except Exception as e:
+                logger.error(f"Semantic search failed: {e}")
+                return []
 
     def _search_graph(
         self,
@@ -843,50 +935,90 @@ class HybridRetriever:
         weight: float,
     ) -> list[Candidate]:
         """Graph 검색"""
-        try:
-            current_node = self.graph_search.get_node_by_location(
-                repo_id=repo_id,
-                file_path=location_ctx.file_path,
-                line=location_ctx.line,
-                column=location_ctx.column,
-            )
+        if tracer:
+            with tracer.start_as_current_span("graph_search") as span:
+                try:
+                    span.set_attribute("weight", weight)
+                    span.set_attribute("location.file", location_ctx.file_path)
+                    span.set_attribute("location.line", location_ctx.line or 0)
 
-            if not current_node:
-                return []
-
-            neighbors_with_edges = self.graph_search.expand_neighbors_with_edges(
-                repo_id=repo_id, node_id=current_node.id, k=2
-            )
-
-            candidates = []
-            graph_neighbors = neighbors_with_edges[: int(k * self.config.graph_fetch_ratio)]
-            for neighbor_node, edge_type, depth in graph_neighbors:
-                # Edge 타입별 가중치 적용
-                edge_weights = self.config.graph_edge_weights or {}
-                edge_weight = edge_weights.get(edge_type, 0.5)
-
-                # Depth decay 적용
-                depth_decay = self.config.graph_depth_decay ** (depth - 1)
-
-                # 최종 graph score
-                graph_score = edge_weight * depth_decay
-                normalized_score = self._normalize_graph_score(graph_score)
-                chunk_id = f"chunk-{neighbor_node.id}"
-
-                candidates.append(
-                    Candidate(
+                    current_node = self.graph_search.get_node_by_location(
                         repo_id=repo_id,
-                        chunk_id=chunk_id,
-                        features={"graph_score": normalized_score},
-                        file_path=neighbor_node.file_path,
-                        span=neighbor_node.span,
+                        file_path=location_ctx.file_path,
+                        line=location_ctx.line,
+                        column=location_ctx.column,
                     )
+
+                    if not current_node:
+                        span.set_attribute("current_node.found", False)
+                        return []
+
+                    span.set_attribute("current_node.id", current_node.id)
+                    span.set_attribute("current_node.name", current_node.name)
+
+                    neighbors_with_edges = self.graph_search.expand_neighbors_with_edges(
+                        repo_id=repo_id, node_id=current_node.id, k=2
+                    )
+
+                    span.set_attribute("neighbors.count", len(neighbors_with_edges))
+
+                    return self._process_graph_results(neighbors_with_edges, repo_id, k, span)
+                except Exception as e:
+                    if span:
+                        span.record_exception(e)
+                        span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    logger.error(f"Graph search failed: {e}")
+                    return []
+        else:
+            try:
+                current_node = self.graph_search.get_node_by_location(
+                    repo_id=repo_id,
+                    file_path=location_ctx.file_path,
+                    line=location_ctx.line,
+                    column=location_ctx.column,
                 )
 
-            return candidates
-        except Exception as e:
-            logger.error(f"Graph search failed: {e}")
-            return []
+                if not current_node:
+                    return []
+
+                neighbors_with_edges = self.graph_search.expand_neighbors_with_edges(
+                    repo_id=repo_id, node_id=current_node.id, k=2
+                )
+
+                return self._process_graph_results(neighbors_with_edges, repo_id, k, None)
+            except Exception as e:
+                logger.error(f"Graph search failed: {e}")
+                return []
+
+    def _process_graph_results(self, neighbors_with_edges, repo_id, k, span) -> list[Candidate]:
+        """Graph 검색 결과 처리"""
+        candidates = []
+        graph_neighbors = neighbors_with_edges[: int(k * self.config.graph_fetch_ratio)]
+
+        for neighbor_node, edge_type, depth in graph_neighbors:
+            # Edge 타입별 가중치 적용
+            edge_weights = self.config.graph_edge_weights or {}
+            edge_weight = edge_weights.get(edge_type, 0.5)
+
+            # Depth decay 적용
+            depth_decay = self.config.graph_depth_decay ** (depth - 1)
+
+            # 최종 graph score
+            graph_score = edge_weight * depth_decay
+            normalized_score = self._normalize_graph_score(graph_score)
+            chunk_id = f"chunk-{neighbor_node.id}"
+
+            candidates.append(
+                Candidate(
+                    repo_id=repo_id,
+                    chunk_id=chunk_id,
+                    features={"graph_score": normalized_score},
+                    file_path=neighbor_node.file_path,
+                    span=neighbor_node.span,
+                )
+            )
+
+        return candidates
 
     def _search_fuzzy(
         self,
@@ -898,8 +1030,39 @@ class HybridRetriever:
         """Fuzzy 검색 (개선: 모든 청크 반환 + 점수 분배)"""
         if not self.fuzzy_search:
             return []
+
+        if tracer:
+            with tracer.start_as_current_span("fuzzy_search") as span:
+                try:
+                    span.set_attribute("weight", weight)
+                    return self._execute_fuzzy_search(repo_id, query, k, span)
+                except Exception as e:
+                    if span:
+                        span.record_exception(e)
+                        span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    logger.error(f"Fuzzy search failed: {e}")
+                    return []
+        else:
+            try:
+                return self._execute_fuzzy_search(repo_id, query, k, None)
+            except Exception as e:
+                logger.error(f"Fuzzy search failed: {e}")
+                return []
+
+    def _execute_fuzzy_search(
+        self, repo_id: RepoId, query: str, k: int, span: Any
+    ) -> list[Candidate]:
+        """Fuzzy 검색 실행"""
+        if not self.fuzzy_search:
+            return []
+
+        query_tokens = self._extract_symbol_tokens(query)
+
+        if span:
+            span.set_attribute("query_tokens.count", len(query_tokens))
+            span.set_attribute("query_tokens", ",".join(query_tokens[:10]))  # 처음 10개만
+
         try:
-            query_tokens = self._extract_symbol_tokens(query)
             candidates_map: dict[str, Candidate] = {}  # chunk_id -> Candidate (중복 방지)
 
             for token in query_tokens:
@@ -995,7 +1158,13 @@ class HybridRetriever:
                                 span=span,
                             )
 
-            return list(candidates_map.values())
+            results = list(candidates_map.values())
+
+            if span:
+                span.set_attribute("results.count", len(results))
+                span.set_attribute("candidates.unique", len(candidates_map))
+
+            return results
         except Exception as e:
             logger.error(f"Fuzzy search failed: {e}")
             return []

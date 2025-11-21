@@ -32,6 +32,8 @@ class Bootstrap:
         self.phoenix = init_phoenix(
             enabled=config.phoenix_enabled,
             port=config.phoenix_port,
+            use_cloud=config.phoenix_use_cloud,
+            api_key=config.arize_api_key,
         )
 
         # 인스턴스 캐시 (lazy loading)

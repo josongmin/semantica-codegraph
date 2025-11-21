@@ -23,6 +23,7 @@ from ..core.models import (
 )
 from ..core.ports import ChunkStorePort, EmbeddingStorePort, GraphStorePort
 from ..core.repo_store import RepoMetadataStore
+from ..core.telemetry import get_tracer
 from ..embedding.service import EmbeddingService
 from ..graph.ir_builder import IRBuilder
 from ..parser import create_parser
@@ -31,6 +32,7 @@ from ..search.ports.lexical_search_port import LexicalSearchPort
 from .repo_scanner import RepoScanner
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer(__name__)
 
 
 class IndexingPipeline:
@@ -461,7 +463,9 @@ class IndexingPipeline:
                     api_chunks = sum(
                         1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk")
                     )
-                    logger.info(f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)")
+                    logger.info(
+                        f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)"
+                    )
                     logger.info(f"[Profiling] search_text 생성 완료 ({len(chunks)}개 chunk)")
             except Exception as e:
                 logger.warning(f"[Profiling] Chunk tagging/search_text 실패 (계속 진행): {e}")
@@ -660,8 +664,29 @@ class IndexingPipeline:
             # 4. 파일 스캔
             if hasattr(self, "profiler") and self.profiler:
                 self.profiler.start_sub_phase("scan_files")
+
             step_start = time.time()
-            files = self.scanner.scan(root_path, config)
+
+            # OpenTelemetry span
+            if tracer:
+                with tracer.start_as_current_span("scan_files") as scan_span:
+                    scan_span.set_attribute("repo.id", repo_id)
+                    scan_span.set_attribute("repo.path", root_path)
+
+                    files = self.scanner.scan(root_path, config)
+
+                    scan_span.set_attribute("files.count", len(files))
+                    scan_span.set_attribute(
+                        "files.total_size",
+                        sum(
+                            Path(f.abs_path).stat().st_size
+                            for f in files
+                            if Path(f.abs_path).exists()
+                        ),
+                    )
+            else:
+                files = self.scanner.scan(root_path, config)
+
             logger.info(
                 f"[Step 1/11] File scan: {len(files)} files found ({time.time() - step_start:.2f}s)"
             )

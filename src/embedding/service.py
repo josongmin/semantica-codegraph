@@ -1,11 +1,14 @@
 """임베딩 서비스 - 다양한 모델 지원"""
 
 import logging
+from typing import Any
 
 from ..core.enums import EmbeddingModel
 from ..core.models import CodeChunk
+from ..core.telemetry import get_tracer
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer(__name__)
 
 
 class EmbeddingService:
@@ -181,12 +184,33 @@ class EmbeddingService:
         Returns:
             벡터 리스트
         """
+        if tracer:
+            with tracer.start_as_current_span("mistral_embedding") as span:
+                try:
+                    span.set_attribute("model", self.model.value)
+                    span.set_attribute("texts.count", len(texts))
+                    span.set_attribute("texts.total_length", sum(len(t) for t in texts))
+
+                    result = self._execute_mistral_embed(texts, span)
+
+                    span.set_attribute("vectors.count", len(result))
+                    span.set_attribute("vectors.dimension", len(result[0]) if result else 0)
+                    return result
+                except Exception as e:
+                    if span:
+                        span.record_exception(e)
+                    raise
+        else:
+            return self._execute_mistral_embed(texts, None)
+
+    def _execute_mistral_embed(self, texts: list[str], span: Any) -> list[list[float]]:
+        """Mistral 임베딩 실행"""
         # Mistral 최대 토큰 제한
         MAX_TOKENS_PER_TEXT = 8192  # 개별 텍스트 최대 토큰
         MAX_TOKENS_PER_BATCH = 16384  # 배치 전체 최대 토큰 (안전 마진 포함)
 
         # 토큰 수 추정 및 텍스트 자르기
-        processed_texts = []
+        processed_texts: list[str] = []
         for text in texts:
             # 간단한 토큰 추정: 1토큰 ≈ 4글자
             estimated_tokens = len(text) // 4
@@ -203,9 +227,10 @@ class EmbeddingService:
                 processed_texts.append(text)
 
         # 배치 전체 토큰 수 확인 및 분할
-        all_vectors = []
+        all_vectors: list[list[float]] = []
         current_batch: list[str] = []
         current_batch_tokens = 0
+        batch_count = 0
 
         for text in processed_texts:
             text_tokens = len(text) // 4
@@ -213,6 +238,7 @@ class EmbeddingService:
             # 현재 배치에 추가하면 제한 초과하는 경우
             if current_batch and (current_batch_tokens + text_tokens > MAX_TOKENS_PER_BATCH):
                 # 현재 배치 처리
+                batch_count += 1
                 try:
                     response = self.client.embeddings.create(
                         model=self.model.value,
@@ -236,6 +262,7 @@ class EmbeddingService:
 
         # 마지막 배치 처리
         if current_batch:
+            batch_count += 1
             try:
                 response = self.client.embeddings.create(
                     model=self.model.value,
@@ -249,6 +276,10 @@ class EmbeddingService:
             except Exception as e:
                 logger.error(f"Mistral embedding failed: {e}")
                 raise
+
+        if span:
+            span.set_attribute("api.batches", batch_count)
+            span.set_attribute("api.total_tokens", sum(len(t) // 4 for t in processed_texts))
 
         return all_vectors
 

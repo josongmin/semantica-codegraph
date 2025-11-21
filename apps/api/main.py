@@ -127,7 +127,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                         except Exception:
                             logger.warning(f"에러 응답 본문 (바이너리): {len(response_body)} bytes")
                     elif response_body:
-                        logger.warning(f"에러 응답 본문: {len(response_body)} bytes (너무 커서 생략)")
+                        logger.warning(
+                            f"에러 응답 본문: {len(response_body)} bytes (너무 커서 생략)"
+                        )
 
                     # 응답 재생성
                     from starlette.responses import Response as StarletteResponse

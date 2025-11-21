@@ -132,7 +132,9 @@ class Config:
 
     # Phoenix 설정 (RAG 품질 추적)
     phoenix_enabled: bool = False  # Phoenix 활성화
-    phoenix_port: int = 6006  # Phoenix UI 포트
+    phoenix_use_cloud: bool = False  # Arize Cloud 사용
+    phoenix_port: int = 6006  # Phoenix UI 포트 (self-hosted만)
+    arize_api_key: str | None = None  # Arize API 키
 
     def __post_init__(self):
         """기본값 초기화"""
@@ -280,5 +282,7 @@ class Config:
             otel_service_name=os.getenv("OTEL_SERVICE_NAME", "semantica-codegraph"),
             environment=os.getenv("ENVIRONMENT", "development"),
             phoenix_enabled=os.getenv("PHOENIX_ENABLED", "false").lower() == "true",
+            phoenix_use_cloud=os.getenv("PHOENIX_USE_CLOUD", "false").lower() == "true",
             phoenix_port=int(os.getenv("PHOENIX_PORT", "6006")),
+            arize_api_key=os.getenv("ARIZE_API_KEY"),
         )
