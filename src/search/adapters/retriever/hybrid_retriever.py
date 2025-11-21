@@ -9,6 +9,11 @@ from src.core.models import Candidate, ChunkResult, LocationContext, RepoId
 from src.core.ports import ChunkStorePort
 from src.core.telemetry import get_tracer
 from src.search.adapters.fusion import FusionStrategy, WeightedFusion
+
+try:
+    from opentelemetry import trace
+except ImportError:
+    trace = None  # type: ignore
 from src.search.ports.fuzzy_search_port import FuzzySearchPort
 from src.search.ports.graph_search_port import GraphSearchPort
 from src.search.ports.lexical_search_port import LexicalSearchPort
@@ -101,12 +106,54 @@ class HybridRetriever:
         # Phase 2: 로깅을 위한 시작 시간
         start_time = time.time()
 
-        if parallel and self.config.parallel_search_enabled:
-            # 병렬 검색
-            results = self._retrieve_parallel(repo_id, query, k, location_ctx, weights)
+        # OpenTelemetry span
+        if tracer:
+            with tracer.start_as_current_span("hybrid_search") as span:
+                try:
+                    span.set_attribute("query", query[:100])  # 100자만
+                    span.set_attribute("k", k)
+                    span.set_attribute("parallel", parallel)
+                    span.set_attribute("repo_id", repo_id)
+
+                    if parallel and self.config.parallel_search_enabled:
+                        # 병렬 검색
+                        results = self._retrieve_parallel(repo_id, query, k, location_ctx, weights)
+                    else:
+                        # 순차 검색 (기존 방식)
+                        results = self._retrieve_sequential(repo_id, query, k, location_ctx, weights)
+
+                    span.set_attribute("results.count", len(results))
+                    return self._finish_retrieve(
+                        results, repo_id, query, query_type, k, weights, start_time
+                    )
+                except Exception as e:
+                    if span:
+                        span.record_exception(e)
+                        span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    raise
         else:
-            # 순차 검색 (기존 방식)
-            results = self._retrieve_sequential(repo_id, query, k, location_ctx, weights)
+            # Telemetry 비활성화 시 기존 로직
+            if parallel and self.config.parallel_search_enabled:
+                # 병렬 검색
+                results = self._retrieve_parallel(repo_id, query, k, location_ctx, weights)
+            else:
+                # 순차 검색 (기존 방식)
+                results = self._retrieve_sequential(repo_id, query, k, location_ctx, weights)
+
+            return self._finish_retrieve(results, repo_id, query, query_type, k, weights, start_time)
+
+    def _finish_retrieve(
+        self,
+        results: list[Candidate],
+        repo_id: RepoId,
+        query: str,
+        query_type: str | None,
+        k: int,
+        weights: dict[str, float],
+        start_time: float,
+    ) -> list[Candidate]:
+        """검색 완료 처리 (로깅)"""
+        import time
 
         # Phase 2: Query logging
         if self.enable_query_logging and self.query_log_store:
