@@ -148,13 +148,52 @@ src/core/ports.py: 30개 Symbol 청크 + 1개 요약 청크
 - 파일 레벨 질문 recall 대폭 향상
 - Symbol 레벨 질문은 기존과 동일
 
-## 참고
+## 해결된 이슈
 
-### 관련 이슈
-- "많은 파일이 노드는 있는데 청크가 0개" 문제 분석
-- 7000 토큰 제한으로 인한 임베딩 스킵 이슈
+### 1. "노드는 있는데 청크 0개" 문제 (해결)
+
+**원인:**
+- 프로파일러 리포트 버그
+- 실제로는 청크가 정상 생성되고 있었음
+- DB 조회 결과: 모든 파일에 청크 존재 확인
+
+**확인:**
+```
+src/indexer/pipeline.py:
+  - 프로파일러 표시: 청크 0개
+  - 실제 DB: 15개 청크 (14 Symbol + 1 File Summary)
+```
+
+**해결:**
+- 프로파일러 수정은 불필요 (실제 문제 없음)
+- 조건부 파일 요약 청크 기능 추가로 더 개선됨
+
+### 2. 7000 토큰 제한 임베딩 스킵 (해결)
+
+**원인:**
+- `pipeline.py` L1173: `MAX_TOKEN_LIMIT = 7000` 하드코딩
+- 큰 클래스 (7050, 7052 토큰) 임베딩 스킵
+- Mistral Codestral Embed는 16K 토큰 지원하는데 활용 못함
+
+**해결:**
+```python
+# 변경 전
+MAX_TOKEN_LIMIT = 7000
+
+# 변경 후  
+MAX_TOKEN_LIMIT = 15000  # Codestral Embed 16K 제한 (안전 마진 1K)
+```
+
+**결과:**
+- 7050, 7052 토큰 청크 정상 임베딩
+- 경고 메시지 사라짐
+- 더 큰 청크 처리 가능
+
+## 참고
 
 ### 관련 파일
 - `src/chunking/chunker.py`
 - `src/chunking/file_summary_builder.py`
+- `src/indexer/pipeline.py` (토큰 제한 상향)
 - `docs/chunking-pipeline.md`
+- `docs/chunking-strategy.md`
