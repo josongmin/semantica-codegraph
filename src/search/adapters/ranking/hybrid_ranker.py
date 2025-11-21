@@ -180,8 +180,7 @@ class HybridRanker:
         """Explanation 생성 (디버그용)"""
         # 상위 3개 시그널
         signals = [
-            (name, candidate.features.get(name, 0.0), weights.get(name, 0.0))
-            for name in weights.keys()
+            (name, candidate.features.get(name, 0.0), weights.get(name, 0.0)) for name in weights
         ]
         top_signals = sorted(signals, key=lambda x: x[1] * x[2], reverse=True)[:3]
 

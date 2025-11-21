@@ -139,7 +139,7 @@ class HybridRetriever:
         lexical_results_raw = []
         if weights.get("lexical", 0) > 0:
             try:
-                lexical_k = int(k * self.config.lexical_fetch_multiplier)
+                lexical_k = int(k * self.config.lexical_fetch_ratio)
                 lexical_results_raw = self.lexical_search.search(
                     repo_id=repo_id,
                     query=query,
@@ -154,7 +154,7 @@ class HybridRetriever:
         semantic_results_raw = []
         if weights.get("semantic", 0) > 0:
             try:
-                semantic_k = int(k * self.config.semantic_fetch_multiplier)
+                semantic_k = int(k * self.config.semantic_fetch_ratio)
                 semantic_results_raw = self.semantic_search.search(
                     repo_id=repo_id,
                     query=query,
@@ -185,9 +185,7 @@ class HybridRetriever:
                     )
 
                     # 노드를 Candidate로 변환
-                    graph_neighbors = neighbors_with_edges[
-                        : int(k * self.config.graph_fetch_multiplier)
-                    ]
+                    graph_neighbors = neighbors_with_edges[: int(k * self.config.graph_fetch_ratio)]
                     for neighbor_node, edge_type, depth in graph_neighbors:
                         # Edge 타입별 가중치 적용
                         edge_weights = self.config.graph_edge_weights or {}
@@ -708,7 +706,7 @@ class HybridRetriever:
     ) -> list[Candidate]:
         """Lexical 검색"""
         try:
-            lexical_k = int(k * self.config.lexical_fetch_multiplier)
+            lexical_k = int(k * self.config.lexical_fetch_ratio)
             lexical_results = self.lexical_search.search(
                 repo_id=repo_id,
                 query=query,
@@ -736,7 +734,7 @@ class HybridRetriever:
     ) -> list[Candidate]:
         """Semantic 검색"""
         try:
-            semantic_k = int(k * self.config.semantic_fetch_multiplier)
+            semantic_k = int(k * self.config.semantic_fetch_ratio)
             semantic_results = self.semantic_search.search(
                 repo_id=repo_id,
                 query=query,
@@ -778,7 +776,7 @@ class HybridRetriever:
             )
 
             candidates = []
-            graph_neighbors = neighbors_with_edges[: int(k * self.config.graph_fetch_multiplier)]
+            graph_neighbors = neighbors_with_edges[: int(k * self.config.graph_fetch_ratio)]
             for neighbor_node, edge_type, depth in graph_neighbors:
                 # Edge 타입별 가중치 적용
                 edge_weights = self.config.graph_edge_weights or {}

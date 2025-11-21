@@ -59,7 +59,7 @@ class QueryLogAnalyzer:
             f"(type={node_type}, days={days}, min_queries={min_query_count})"
         )
 
-        return popular
+        return list(popular)
 
     def analyze_weight_effectiveness(
         self,
@@ -108,7 +108,7 @@ class QueryLogAnalyzer:
                 # 시그널별 점수 집계
                 signal_scores: dict[str, list[float]] = {}
 
-                for top_results, weights in rows:
+                for top_results, _weights in rows:
                     if not top_results or not isinstance(top_results, list):
                         continue
 

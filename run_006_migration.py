@@ -24,8 +24,7 @@ try:
     migration_file = Path(__file__).parent / "migrations" / "006_query_logs.sql"
     print(f"\n[1] Migration 파일 읽기: {migration_file.name}")
 
-    with open(migration_file, encoding="utf-8") as f:
-        sql = f.read()
+    sql = migration_file.read_text(encoding="utf-8")
 
     # SQL 구문 분리 실행
     print("\n[2] Migration 실행 중...")

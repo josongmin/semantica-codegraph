@@ -74,3 +74,10 @@ class EmbeddingModel(str, Enum):
 
     # Cohere
     COHERE_V3 = "embed-english-v3.0"
+
+
+class VectorStoreBackend(str, Enum):
+    """벡터 저장소 백엔드 선택"""
+
+    QDRANT = "qdrant"
+    PGVECTOR = "pgvector"

@@ -99,7 +99,6 @@ class Bootstrap:
                 api_key=self.config.embedding_api_key,
                 api_base=self.config.mistral_api_base,
                 dimension=self.config.embedding_dimension,
-                timeout=self.config.embedding_api_timeout,
             )
         return self._embedding_service
 
@@ -118,7 +117,6 @@ class Bootstrap:
             self._embedding_service_small = EmbeddingService(
                 model=EmbeddingModel.OPENAI_3_SMALL,
                 api_key=openai_key,
-                timeout=self.config.embedding_api_timeout,
             )
         return self._embedding_service_small
 
@@ -137,7 +135,6 @@ class Bootstrap:
             self._embedding_service_large = EmbeddingService(
                 model=EmbeddingModel.OPENAI_3_LARGE,
                 api_key=openai_key,
-                timeout=self.config.embedding_api_timeout,
             )
         return self._embedding_service_large
 
@@ -167,7 +164,6 @@ class Bootstrap:
                     model_name=self.config.embedding_model.value,
                     pool_size=self.config.db_connection_pool_size,
                     pool_max=self.config.db_connection_pool_max,
-                    skip_table_init=self.config.skip_table_init,
                 )
             return self._embedding_store
         else:

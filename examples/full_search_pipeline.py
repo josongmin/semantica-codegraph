@@ -101,7 +101,7 @@ def main():
     print("\n3. Ranker 적용")
     print("-" * 80)
 
-    ranked = bootstrap.ranker.rank(candidates, max_items=5)
+    ranked = bootstrap.reranker.rank(candidates, max_items=5)
 
     print("랭킹된 결과 (상위 5개):")
     for i, candidate in enumerate(ranked, 1):
