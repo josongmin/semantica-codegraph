@@ -1,6 +1,15 @@
 # Codegraph 청킹 파이프라인
 
-## 전체 흐름
+## 개요
+
+이 문서는 소스 코드를 검색 가능한 청크로 변환하는 전체 파이프라인을 설명합니다.
+
+**핵심 설계:**
+- `CodeChunk.text` = 원본 코드 (raw_code)
+- `attrs["search_text"]` = 검색 최적화 텍스트 ([META] + raw_code)
+- Meilisearch/Qdrant는 `search_text` 우선 사용
+
+## 1. High-level Overview
 
 ```
 소스 코드 파일 (Python, TypeScript)
@@ -11,7 +20,7 @@ CodeNode 리스트 (AST 노드)
   ↓
 [Stage 1] Chunker: Node → Chunk 변환
   입력: CodeNode 리스트 (Function, Class, Method, File 등)
-  처리: 
+  처리:
     1. 파일별로 노드 그룹화
     2. Symbol 노드 → 1개 청크 생성 (토큰 체크 후 필요시 분할)
     3. File 노드 → 조건 확인 후 파일 요약 청크 생성
@@ -47,7 +56,25 @@ CodeNode 리스트 (AST 노드)
   - Qdrant: embedding 벡터 저장
 ```
 
-## 파이프라인 동작 상세
+## 2. 파이프라인 Stage별 상세
+
+### 데이터 필드 정의
+
+**CodeChunk 필드:**
+```python
+CodeChunk(
+    text: str           # 원본 코드 (raw_code) - 코드 뷰어용
+    attrs: dict         # 메타데이터
+      - "search_text"   # 검색 최적화 텍스트 ([META] + raw_code)
+      - "metadata"      # ChunkTagger 출력 (is_api_endpoint_chunk 등)
+      - "node_kind"     # Function, Class, Method 등
+      - "node_name"     # 심볼 이름
+)
+```
+
+**검색 인덱스 입력:**
+- Meilisearch: `attrs["search_text"]` 우선, 없으면 `text`
+- Qdrant: `embedding(attrs["search_text"])` 우선, 없으면 `embedding(text)`
 
 ### 입력 데이터 흐름
 
@@ -90,54 +117,92 @@ if should_create_summary(file_node, symbol_nodes):
 ```
 
 **3. Stage 2 → ChunkTagger 처리**
+
+입력: CodeChunk + FileProfile
+
+FileProfile은 repo_profiler/file_profiler가 선행 분석:
+- `is_api_file`: API 라우터 파일 여부
+- `roles`: ["API", "Service", "Model"] 등
+- `api_framework`: "fastapi", "flask" 등
+
 ```python
 for chunk in chunks:
+    # file_profile 조회
+    file_profile = file_profile_map.get(chunk.file_path)
+
     # 코드 스캔
     metadata = {
         "has_docstring": '"""' in chunk.text,
         "is_class_definition": re.search(r'class\s+\w+', chunk.text),
         "is_async": 'async def' in chunk.text,
     }
-    
-    # API endpoint 감지 (file_profile.is_api_file == True인 경우)
-    if '@app.post("/search")' in chunk.text:
-        metadata["is_api_endpoint_chunk"] = True
-        metadata["http_method"] = "POST"
-        metadata["http_path"] = "/search"
-    
-    chunk.attrs.update(metadata)
+
+    # API endpoint 감지 (file_profile.is_api_file == True인 경우만)
+    if file_profile and file_profile.is_api_file:
+        if '@app.post("/search")' in chunk.text:
+            metadata["is_api_endpoint_chunk"] = True
+            metadata["http_method"] = "POST"
+            metadata["http_path"] = "/search"
+
+    chunk.attrs["metadata"] = metadata
 ```
 
 **4. Stage 3 → SearchTextBuilder 처리**
+
+입력: CodeChunk + FileProfile + 메타데이터
+
+**기능 키워드 추출 정책:**
+- 패턴 기반: 15개 카테고리 (authentication, database access, HTTP client 등)
+- 도메인 특화: 낮은 빈도 키워드 우선 포함 (예: reranker, qdrant)
+- 목표: 자연어 질문 recall 3-5배 향상
+
+**[META] 길이 제한:**
+- META 섹션은 전체 토큰의 20% 이하로 제한
+- 초과 시 키워드 요약
+
 ```python
 def build_search_text(chunk, file_profile, metadata):
     parts = []
-    
+
     # [META] 섹션
     parts.append(f"[META] File: {chunk.file_path}")
-    parts.append(f"[META] Role: {file_profile.roles}")  # "API, Service"
-    
-    if metadata["is_api_endpoint_chunk"]:
+
+    # FileProfile.roles 사용
+    if file_profile:
+        roles = file_profile.roles  # ["API", "Service"]
+        parts.append(f"[META] Role: {', '.join(roles)}")
+
+    if metadata.get("is_api_endpoint_chunk"):
         parts.append(f"[META] Endpoint: {metadata['http_method']} {metadata['http_path']}")
-    
+
     parts.append(f"[META] Symbol: {chunk.attrs['node_kind']} {chunk.attrs['node_name']}")
-    
-    # 기능 키워드 추출
-    features = extract_features(chunk.text)  # ["authentication", "database access"]
-    parts.append(f"[META] Contains: {', '.join(features)}")
-    
+
+    # 기능 키워드 추출 (15개 패턴 스캔)
+    features = extract_features(chunk.text, file_profile)
+    # 예: ["authentication", "database access", "error handling"]
+    parts.append(f"[META] Contains: {', '.join(features[:5])}")  # 최대 5개
+
     # 원본 코드
     parts.append("")
-    parts.append(chunk.text)
-    
+    parts.append(chunk.text)  # raw_code 그대로
+
+    search_text = "\n".join(parts)
+
+    # 길이 제한 체크 (META는 전체의 20% 이하)
+    meta_tokens = count_tokens(parts[:-2])  # META 섹션만
+    total_tokens = count_tokens(search_text)
+    if meta_tokens > total_tokens * 0.2:
+        # META 압축 (키워드 요약)
+        parts = compress_meta(parts)
+
     return "\n".join(parts)
 
-# 결과
+# 결과: chunk.text는 그대로, attrs["search_text"]에 저장
 chunk.attrs["search_text"] = """
 [META] File: auth/jwt_handler.py
 [META] Role: Authentication, Service
 [META] Symbol: Function verify_token
-[META] Contains: authentication, database access, error handling
+[META] Contains: authentication, database access
 
 def verify_token(token: str) -> User:
     ...
@@ -145,32 +210,57 @@ def verify_token(token: str) -> User:
 ```
 
 **5. Stage 4 → ChunkStore 저장**
+
+**DB 스키마:**
+```sql
+CREATE TABLE code_chunks (
+    text TEXT NOT NULL,     -- 원본 코드 (raw_code)
+    attrs JSONB,            -- search_text, metadata 등
+    ...
+)
+```
+
+**저장 로직:**
 ```python
 def save_chunks(chunks):
     conn = get_connection()
     with conn.cursor() as cur:
         # 배치 INSERT
         execute_batch(cur, """
-            INSERT INTO code_chunks 
-            (repo_id, chunk_id, node_id, file_path, span_start_line, span_end_line, 
+            INSERT INTO code_chunks
+            (repo_id, chunk_id, node_id, file_path, span_start_line, span_end_line,
              language, text, attrs)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (repo_id, chunk_id) 
-            DO UPDATE SET 
+            ON CONFLICT (repo_id, chunk_id)
+            DO UPDATE SET
                 text = EXCLUDED.text,
                 attrs = EXCLUDED.attrs
         """, [
             (chunk.repo_id, chunk.id, chunk.node_id, chunk.file_path,
-             chunk.span[0], chunk.span[2], chunk.language, 
-             chunk.attrs["search_text"], json.dumps(chunk.attrs))
+             chunk.span[0], chunk.span[2], chunk.language,
+             chunk.text,  # raw_code 저장
+             json.dumps(chunk.attrs))  # search_text는 attrs 안에
             for chunk in chunks
         ])
     conn.commit()
 ```
 
-### 데이터 변환 예시
+**검색 인덱스:**
+```python
+# Meilisearch
+documents = [{
+    "text": chunk.attrs.get("search_text", chunk.text),  # search_text 우선
+    ...
+}]
 
-**전체 과정:**
+# Qdrant (Embedding)
+embedding_input = chunk.attrs.get("search_text")  # search_text 우선
+if not embedding_input:
+    embedding_input = chunk.text  # fallback: raw_code
+```
+
+### 데이터 변환 전체 과정
+
 ```python
 # 입력: CodeNode
 node = CodeNode(
@@ -182,16 +272,19 @@ node = CodeNode(
 # Stage 1: Chunker
 chunk = CodeChunk(
     node_id=node.id,
-    text=node.text,
-    attrs={"node_kind": "Function", "node_name": "verify_token"}
+    text=node.text,  # raw_code 유지
+    attrs={
+        "node_kind": "Function",
+        "node_name": "verify_token"
+    }
 )
 
 # Stage 2: ChunkTagger
-chunk.attrs.update({
+chunk.attrs["metadata"] = {
     "is_function_definition": True,
     "has_docstring": False,
     "is_async": False,
-})
+}
 
 # Stage 3: SearchTextBuilder
 chunk.attrs["search_text"] = """
@@ -202,16 +295,27 @@ chunk.attrs["search_text"] = """
 def verify_token(token: str):
     return jwt.decode(token)
 """
+# 주의: chunk.text는 그대로 (raw_code)
 
 # Stage 4: ChunkStore → PostgreSQL
-# chunks 테이블에 INSERT
+INSERT INTO code_chunks (text, attrs) VALUES (
+    chunk.text,  # raw_code
+    json.dumps(chunk.attrs)  # search_text는 attrs 안에
+)
 
 # 최종: 검색 인덱스
-# Meilisearch: search_text 인덱싱
-# Qdrant: embedding(search_text) 저장
+# Meilisearch: attrs["search_text"] 인덱싱
+# Qdrant: embedding(attrs["search_text"]) 저장
 ```
 
-## Stage 1: Chunker (Node → Chunk)
+**임베딩 입력 정책:**
+- 현재: `attrs["search_text"]` 전체 ([META] + raw_code)
+- 향후 확장 옵션 (embedding_mode):
+  - `code_only`: raw_code만 임베딩
+  - `meta_plus_snippet`: [META] + 코드 일부
+  - `adaptive`: 청크 타입별 다른 전략
+
+### Stage 1: Chunker (Node → Chunk)
 
 ### 입력: CodeNode
 
@@ -414,18 +518,18 @@ CodeChunk(
     node_id="node-123",
     file_path="auth/jwt_handler.py",
     span=(10, 0, 25, 4),
-    text="def verify_jwt_token(token: str) -> User:\n...",
+    text="def verify_jwt_token(token: str) -> User:\n...",  # raw_code
     language="python",
-    token_count=85,
     attrs={
         "node_kind": "Function",
         "node_name": "verify_jwt_token",
         "parent_id": "node-122",
+        # "search_text"는 Stage 3에서 추가됨
     }
 )
 ```
 
-## Stage 2: ChunkTagger (메타데이터 태깅)
+### Stage 2: ChunkTagger (메타데이터 태깅)
 
 ### 역할
 
@@ -478,7 +582,7 @@ async def hybrid_search(request: HybridSearchRequest):
 - Flask: `@app.route`
 - Express: `app.get(`, `router.post(`
 
-## Stage 3: SearchTextBuilder (검색 최적화)
+### Stage 3: SearchTextBuilder (검색 최적화)
 
 ### 목표
 
@@ -581,9 +685,9 @@ def verify_jwt_token(token: str):
 
 **결과: Recall 3-5배 향상**
 
-## Stage 4: ChunkStore (PostgreSQL 저장)
+### Stage 4: ChunkStore (PostgreSQL 저장)
 
-### 테이블 스키마
+#### 테이블 스키마
 
 ```sql
 CREATE TABLE code_chunks (
@@ -596,12 +700,26 @@ CREATE TABLE code_chunks (
     span_end_line INTEGER NOT NULL,
     span_end_col INTEGER NOT NULL,
     language TEXT NOT NULL,
-    text TEXT NOT NULL,  -- 검색용 텍스트 ([META] 포함)
+    text TEXT NOT NULL,  -- 원본 코드 (raw_code) - 코드 뷰어용
     token_count INTEGER,
-    attrs JSONB,         -- 메타데이터
+    attrs JSONB,         -- search_text, metadata 등
     created_at TIMESTAMP DEFAULT NOW(),
     PRIMARY KEY (repo_id, chunk_id)
 );
+```
+
+**attrs JSONB 구조:**
+```json
+{
+  "search_text": "[META] File: ...\n\ndef func()...",
+  "metadata": {
+    "is_api_endpoint_chunk": true,
+    "http_method": "POST",
+    "http_path": "/search"
+  },
+  "node_kind": "Function",
+  "node_name": "search_handler"
+}
 ```
 
 ### 인덱스
@@ -649,7 +767,9 @@ def save_chunks(chunks: list[CodeChunk]):
 # 속도: 1000 청크 → ~0.5초
 ```
 
-## 전체 성능
+## 3. 성능 특성 및 튜닝
+
+### 전체 성능
 
 ### 인덱싱 속도
 
@@ -693,7 +813,7 @@ Codegraph 프로젝트 (2025-11-21 기준):
 - src/indexer/pipeline.py: 15개 청크 (14 Symbol + 1 File Summary)
 ```
 
-## 설정 튜닝
+### 설정 튜닝
 
 ### 청킹 전략 선택
 
@@ -750,7 +870,7 @@ enable_chunk_tagging = True
 enable_search_text = False
 ```
 
-## 청크 품질 체크
+### 청크 품질 체크
 
 ### 좋은 청크 예시
 
@@ -783,7 +903,7 @@ def large_function():
 
 ❌ **컨텍스트 없음 (메타데이터 누락)**
 
-## 참고
+## 4. 참고
 
 ### 소스 코드
 - Chunker: `src/chunking/chunker.py`
