@@ -75,7 +75,7 @@ class Chunker:
         self,
         nodes: list[CodeNode],
         source_files: dict[str, str] | None = None,
-    ) -> list[CodeChunk]:
+    ) -> tuple[list[CodeChunk], dict]:
         """
         CodeNode 리스트를 CodeChunk 리스트로 변환
 
@@ -85,33 +85,46 @@ class Chunker:
                          {file_path: source_code}
 
         Returns:
-            CodeChunk 리스트
+            (CodeChunk 리스트, 메트릭 dict)
         """
         if not nodes:
             logger.warning("No nodes to chunk")
-            return []
+            return [], {}
+
+        metrics: dict = {
+            "total_nodes": len(nodes),
+            "symbol_chunks": 0,
+            "file_summary_chunks": 0,
+            "split_nodes": 0,
+        }
 
         if self.strategy == "node_based":
-            chunks = self._chunk_node_based(nodes, source_files)
+            chunks, chunk_metrics = self._chunk_node_based(nodes, source_files)
+            metrics.update(chunk_metrics)
         elif self.strategy == "size_based":
             chunks = self._chunk_size_based(nodes)
+            metrics["symbol_chunks"] = len(chunks)
         elif self.strategy == "hierarchical":
             chunks = self._chunk_hierarchical(nodes)
+            metrics["symbol_chunks"] = len(chunks)
         else:
             logger.warning(f"Unknown strategy: {self.strategy}, using node_based")
-            chunks = self._chunk_node_based(nodes, source_files)
+            chunks, chunk_metrics = self._chunk_node_based(nodes, source_files)
+            metrics.update(chunk_metrics)
 
         logger.info(
-            f"Chunked {len(nodes)} nodes into {len(chunks)} chunks (strategy={self.strategy})"
+            f"Chunked {len(nodes)} nodes into {len(chunks)} chunks (strategy={self.strategy}), "
+            f"symbol:{metrics.get('symbol_chunks', 0)}, "
+            f"file_summary:{metrics.get('file_summary_chunks', 0)}"
         )
 
-        return chunks
+        return chunks, metrics
 
     def _chunk_node_based(
         self,
         nodes: list[CodeNode],
         source_files: dict[str, str] | None = None,
-    ) -> list[CodeChunk]:
+    ) -> tuple[list[CodeChunk], dict]:
         """
         Node 기반 청킹: 1 Node = 1 Chunk (병렬 처리)
         + 조건부 파일 요약 청크 생성
@@ -162,34 +175,49 @@ class Chunker:
 
         # Symbol 노드만 병렬 처리
         symbol_nodes = [n for n in nodes if n.kind != "File"]
+        split_count = 0
+        
         with ThreadPoolExecutor(max_workers=4) as executor:
             results = executor.map(process_node, symbol_nodes)
             for node_chunks in results:
                 chunks.extend(node_chunks)
+                # 분할된 청크 감지
+                if len(node_chunks) > 1:
+                    split_count += 1
 
         # 3. 조건부 파일 요약 청크 생성
+        file_summary_count = 0
         if self.enable_file_summary:
             summary_chunks = self._create_file_summary_chunks(
                 file_nodes, nodes_by_file, source_files
             )
             chunks.extend(summary_chunks)
+            file_summary_count = len(summary_chunks)
 
             if summary_chunks:
-                logger.info(f"Created {len(summary_chunks)} file summary chunks")
+                logger.info(f"Created {file_summary_count} file summary chunks")
 
-        return chunks
+        # 메트릭 수집
+        metrics = {
+            "symbol_chunks": len(chunks) - file_summary_count,
+            "file_summary_chunks": file_summary_count,
+            "split_nodes": split_count,
+        }
+
+        return chunks, metrics
 
     def _chunk_node_based_sequential(
         self,
         nodes: list[CodeNode],
         source_files: dict[str, str] | None = None,
-    ) -> list[CodeChunk]:
+    ) -> tuple[list[CodeChunk], dict]:
         """순차 처리 버전 (작은 프로젝트용)"""
         chunks = []
 
         # 파일별로 노드 그룹화
         nodes_by_file: dict[str, list[CodeNode]] = {}
         file_nodes: dict[str, CodeNode] = {}
+        split_count = 0
 
         for node in nodes:
             file_path = node.file_path
@@ -216,22 +244,32 @@ class Chunker:
                         )
                         split_chunks = self._split_node_by_tokens(node)
                         chunks.extend(split_chunks)
+                        split_count += 1
                         continue
 
             chunk = self._node_to_chunk(node)
             chunks.append(chunk)
 
         # 조건부 파일 요약 청크 생성
+        file_summary_count = 0
         if self.enable_file_summary:
             summary_chunks = self._create_file_summary_chunks(
                 file_nodes, nodes_by_file, source_files
             )
             chunks.extend(summary_chunks)
+            file_summary_count = len(summary_chunks)
 
             if summary_chunks:
-                logger.info(f"Created {len(summary_chunks)} file summary chunks")
+                logger.info(f"Created {file_summary_count} file summary chunks")
 
-        return chunks
+        # 메트릭 수집
+        metrics = {
+            "symbol_chunks": len(chunks) - file_summary_count,
+            "file_summary_chunks": file_summary_count,
+            "split_nodes": split_count,
+        }
+
+        return chunks, metrics
 
     def _chunk_size_based(self, nodes: list[CodeNode]) -> list[CodeChunk]:
         """

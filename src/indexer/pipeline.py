@@ -397,13 +397,21 @@ class IndexingPipeline:
                     # File 노드의 text는 파일 전체 내용
                     source_files[node.file_path] = node.text
 
-            chunks = self.chunker.chunk(all_nodes, source_files)
-            logger.info(f"Generated {len(chunks)} chunks")
+            chunks, chunk_metrics = self.chunker.chunk(all_nodes, source_files)
+            logger.info(
+                f"Generated {len(chunks)} chunks "
+                f"(symbol:{chunk_metrics.get('symbol_chunks', 0)}, "
+                f"file_summary:{chunk_metrics.get('file_summary_chunks', 0)}, "
+                f"split_nodes:{chunk_metrics.get('split_nodes', 0)})"
+            )
             if hasattr(self, "profiler") and self.profiler:
                 chunking_data = self.profiler.end_sub_phase()
                 if chunking_data:
                     self.profiler.add_phase_counter("chunking_ms", chunking_data["elapsed_ms"])
                     self.profiler.add_phase_counter("chunks_created", len(chunks))
+                    # 청킹 상세 메트릭
+                    for key, value in chunk_metrics.items():
+                        self.profiler.add_counter(f"chunk_{key}", value)
 
             # 8. 청크 저장
             if hasattr(self, "profiler") and self.profiler:
@@ -1485,24 +1493,39 @@ async def _index_route_semantics(
         )
 
     # 배치 임베딩 생성
+    import time as time_module
+
     logger.info(f"[Semantic] Generating {len(embeddings_to_generate)} route embeddings...")
+    
+    embed_start = time_module.time()
     embeddings = self.embedding_service_small.embed_texts(embeddings_to_generate)
+    embed_time_ms = int((time_module.time() - embed_start) * 1000)
 
     # 임베딩 채우기
     for node, embedding in zip(semantic_nodes, embeddings, strict=False):
         node["embedding"] = embedding
 
     # 배치 저장
+    save_start = time_module.time()
     saved = self.semantic_node_store.save_batch(
         semantic_nodes, batch_size=1000, on_conflict="replace"
     )
+    save_time_ms = int((time_module.time() - save_start) * 1000)
 
     # 비용 로깅
     total_tokens = sum(len(s.split()) * 1.3 for s in embeddings_to_generate)
     logger.info(
         f"[Semantic] Routes: {saved} saved, ~{int(total_tokens)} tokens, "
-        f"~${total_tokens / 1_000_000 * 0.02:.4f} cost (3-small)"
+        f"~${total_tokens / 1_000_000 * 0.02:.4f} cost (3-small), "
+        f"embed:{embed_time_ms}ms, save:{save_time_ms}ms"
     )
+
+    # 프로파일러에 상세 메트릭 추가
+    if hasattr(self, "profiler") and self.profiler:
+        self.profiler.add_counter("route_semantic_count", int(saved))
+        self.profiler.add_counter("route_embed_time_ms", embed_time_ms)
+        self.profiler.add_counter("route_save_time_ms", save_time_ms)
+        self.profiler.add_counter("route_tokens", int(total_tokens))
 
     return int(saved)
 
@@ -1530,27 +1553,56 @@ async def _index_symbol_semantics(
     # 파일 프로파일 매핑
     file_profile_map = {p.file_path: p for p in file_profiles}
 
+    # 필터링 통계
+    filter_stats = {
+        "total_nodes": len(nodes),
+        "file_nodes": 0,
+        "private": 0,
+        "test_files": 0,
+        "migrations": 0,
+        "indexable": 0,
+    }
+
     # 인덱싱 대상 필터링
     indexable = []
     for node in nodes:
         # 1. Function/Class/Method만
         if node.kind not in ("Function", "Class", "Method"):
+            if node.kind == "File":
+                filter_stats["file_nodes"] += 1
             continue
 
         # 2. Private 제외 (__init__ 제외)
         if node.name.startswith("_") and node.name != "__init__":
+            filter_stats["private"] += 1
             continue
 
         # 3. 테스트 파일 제외 (선택적)
         file_profile = file_profile_map.get(node.file_path)
         if file_profile and file_profile.is_test_file:
+            filter_stats["test_files"] += 1
             continue
 
         # 4. Migration 파일 제외
         if "migration" in node.file_path.lower() or "alembic" in node.file_path.lower():
+            filter_stats["migrations"] += 1
             continue
 
         indexable.append(node)
+    
+    filter_stats["indexable"] = len(indexable)
+    filter_stats["filtered_out"] = (
+        filter_stats["file_nodes"]
+        + filter_stats["private"]
+        + filter_stats["test_files"]
+        + filter_stats["migrations"]
+    )
+    
+    logger.info(
+        f"[Semantic] Symbol filtering: {len(indexable)} indexable from {len(nodes)} nodes "
+        f"(filtered: File:{filter_stats['file_nodes']}, Private:{filter_stats['private']}, "
+        f"Test:{filter_stats['test_files']}, Migration:{filter_stats['migrations']})"
+    )
 
     # 상한선 (비용 제어)
     MAX_SYMBOLS_PER_REPO = 20000
@@ -1610,6 +1662,8 @@ async def _index_symbol_semantics(
         )
 
     # 배치 임베딩 생성
+    import time as time_module
+
     logger.info(f"[Semantic] Generating {len(embeddings_to_generate)} symbol embeddings...")
 
     # 프로파일링: 파일별 심볼 수 기록
@@ -1617,23 +1671,37 @@ async def _index_symbol_semantics(
         self.profiler.add_counter("symbols_by_file", symbols_by_file)
         self.profiler.add_counter("total_symbols", len(indexable))
 
+    embed_start = time_module.time()
     embeddings = self.embedding_service_small.embed_texts(embeddings_to_generate)
+    embed_time_ms = int((time_module.time() - embed_start) * 1000)
 
     # 임베딩 채우기
     for node, embedding in zip(semantic_nodes, embeddings, strict=False):
         node["embedding"] = embedding
 
     # 배치 저장 (1000개씩)
+    save_start = time_module.time()
     saved = self.semantic_node_store.save_batch(
         semantic_nodes, batch_size=1000, on_conflict="replace"
     )
+    save_time_ms = int((time_module.time() - save_start) * 1000)
 
     # 비용 로깅
     total_tokens = sum(len(s.split()) * 1.3 for s in embeddings_to_generate)
     logger.info(
         f"[Semantic] Symbols: {saved} saved, ~{int(total_tokens)} tokens, "
-        f"~${total_tokens / 1_000_000 * 0.02:.4f} cost (3-small)"
+        f"~${total_tokens / 1_000_000 * 0.02:.4f} cost (3-small), "
+        f"embed:{embed_time_ms}ms, save:{save_time_ms}ms"
     )
+
+    # 프로파일러에 상세 메트릭 추가
+    if hasattr(self, "profiler") and self.profiler:
+        for key, value in filter_stats.items():
+            self.profiler.add_counter(f"symbol_filter_{key}", value)
+        self.profiler.add_counter("symbol_semantic_count", int(saved))
+        self.profiler.add_counter("symbol_embed_time_ms", embed_time_ms)
+        self.profiler.add_counter("symbol_save_time_ms", save_time_ms)
+        self.profiler.add_counter("symbol_tokens", int(total_tokens))
 
     return int(saved)
 
