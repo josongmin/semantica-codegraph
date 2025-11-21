@@ -10,27 +10,205 @@ Parser (tree-sitter)
 CodeNode 리스트 (AST 노드)
   ↓
 [Stage 1] Chunker: Node → Chunk 변환
-  - Symbol 노드: 1 Node = 1 Chunk (기본)
-  - File 노드: 조건부 파일 요약 청크 생성
-  - 큰 노드는 분할 (max_tokens: 15000)
-  - 토큰 카운팅 (tiktoken)
+  입력: CodeNode 리스트 (Function, Class, Method, File 등)
+  처리: 
+    1. 파일별로 노드 그룹화
+    2. Symbol 노드 → 1개 청크 생성 (토큰 체크 후 필요시 분할)
+    3. File 노드 → 조건 확인 후 파일 요약 청크 생성
+  출력: CodeChunk 리스트 (text, span, attrs 포함)
   ↓
 [Stage 2] ChunkTagger: 메타데이터 태깅
-  - API endpoint 감지
-  - 청크 타입 분류
-  - HTTP method/path 추출
+  입력: CodeChunk + FileProfile
+  처리:
+    1. 청크 내용 정규식 스캔
+    2. API endpoint 패턴 매칭 (@app.post, @router.get 등)
+    3. 타입 분류 (class, function, test, schema 등)
+  출력: 메타데이터 dict (attrs에 추가)
   ↓
 [Stage 3] SearchTextBuilder: 검색용 텍스트 생성
-  - [META] 헤더 추가
-  - 자연어 매칭 키워드
-  - 파일 역할/기능 명시
+  입력: CodeChunk + FileProfile + 메타데이터
+  처리:
+    1. [META] 헤더 생성 (파일 경로, 역할, 심볼 정보)
+    2. 기능 키워드 추출 (코드 스캔)
+    3. API 엔드포인트 정보 추가
+    4. 원본 코드와 결합
+  출력: search_text (chunk.attrs에 저장)
   ↓
 [Stage 4] ChunkStore: PostgreSQL 저장
-  - chunks 테이블
-  - 위치 기반 인덱스
-  - Node 기반 인덱스
+  입력: CodeChunk 리스트
+  처리:
+    1. 배치 INSERT (execute_batch)
+    2. ON CONFLICT → UPDATE
+    3. 인덱스 자동 업데이트
+  출력: DB에 영구 저장
   ↓
 검색 인덱스 (Lexical, Semantic)
+  - Meilisearch: search_text 인덱싱
+  - Qdrant: embedding 벡터 저장
+```
+
+## 파이프라인 동작 상세
+
+### 입력 데이터 흐름
+
+**1. 파서 출력 (CodeNode)**
+```python
+# 예시: auth/jwt_handler.py 파일 파싱 결과
+nodes = [
+    CodeNode(id="file-1", kind="File", name="auth/jwt_handler.py", text="전체파일내용..."),
+    CodeNode(id="class-1", kind="Class", name="JWTHandler", text="class JWTHandler:\n..."),
+    CodeNode(id="func-1", kind="Function", name="verify_token", text="def verify_token():\n..."),
+    CodeNode(id="func-2", kind="Function", name="create_token", text="def create_token():\n..."),
+]
+```
+
+**2. Stage 1 → Chunker 처리**
+```python
+# 파일별로 그룹화
+files = {
+    "auth/jwt_handler.py": {
+        "file_node": CodeNode(kind="File", ...),
+        "symbol_nodes": [
+            CodeNode(kind="Class", ...),
+            CodeNode(kind="Function", ...),
+            CodeNode(kind="Function", ...),
+        ]
+    }
+}
+
+# Symbol 노드 → 청크 변환
+for node in symbol_nodes:
+    if count_tokens(node.text) > 15000:
+        chunks.extend(split_node(node))  # 분할
+    else:
+        chunks.append(node_to_chunk(node))  # 그대로
+
+# File 노드 → 조건부 요약 청크
+if should_create_summary(file_node, symbol_nodes):
+    summary_chunk = build_file_summary(file_node, symbol_nodes)
+    chunks.append(summary_chunk)
+```
+
+**3. Stage 2 → ChunkTagger 처리**
+```python
+for chunk in chunks:
+    # 코드 스캔
+    metadata = {
+        "has_docstring": '"""' in chunk.text,
+        "is_class_definition": re.search(r'class\s+\w+', chunk.text),
+        "is_async": 'async def' in chunk.text,
+    }
+    
+    # API endpoint 감지 (file_profile.is_api_file == True인 경우)
+    if '@app.post("/search")' in chunk.text:
+        metadata["is_api_endpoint_chunk"] = True
+        metadata["http_method"] = "POST"
+        metadata["http_path"] = "/search"
+    
+    chunk.attrs.update(metadata)
+```
+
+**4. Stage 3 → SearchTextBuilder 처리**
+```python
+def build_search_text(chunk, file_profile, metadata):
+    parts = []
+    
+    # [META] 섹션
+    parts.append(f"[META] File: {chunk.file_path}")
+    parts.append(f"[META] Role: {file_profile.roles}")  # "API, Service"
+    
+    if metadata["is_api_endpoint_chunk"]:
+        parts.append(f"[META] Endpoint: {metadata['http_method']} {metadata['http_path']}")
+    
+    parts.append(f"[META] Symbol: {chunk.attrs['node_kind']} {chunk.attrs['node_name']}")
+    
+    # 기능 키워드 추출
+    features = extract_features(chunk.text)  # ["authentication", "database access"]
+    parts.append(f"[META] Contains: {', '.join(features)}")
+    
+    # 원본 코드
+    parts.append("")
+    parts.append(chunk.text)
+    
+    return "\n".join(parts)
+
+# 결과
+chunk.attrs["search_text"] = """
+[META] File: auth/jwt_handler.py
+[META] Role: Authentication, Service
+[META] Symbol: Function verify_token
+[META] Contains: authentication, database access, error handling
+
+def verify_token(token: str) -> User:
+    ...
+"""
+```
+
+**5. Stage 4 → ChunkStore 저장**
+```python
+def save_chunks(chunks):
+    conn = get_connection()
+    with conn.cursor() as cur:
+        # 배치 INSERT
+        execute_batch(cur, """
+            INSERT INTO code_chunks 
+            (repo_id, chunk_id, node_id, file_path, span_start_line, span_end_line, 
+             language, text, attrs)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (repo_id, chunk_id) 
+            DO UPDATE SET 
+                text = EXCLUDED.text,
+                attrs = EXCLUDED.attrs
+        """, [
+            (chunk.repo_id, chunk.id, chunk.node_id, chunk.file_path,
+             chunk.span[0], chunk.span[2], chunk.language, 
+             chunk.attrs["search_text"], json.dumps(chunk.attrs))
+            for chunk in chunks
+        ])
+    conn.commit()
+```
+
+### 데이터 변환 예시
+
+**전체 과정:**
+```python
+# 입력: CodeNode
+node = CodeNode(
+    kind="Function",
+    name="verify_token",
+    text="def verify_token(token: str):\n    return jwt.decode(token)"
+)
+
+# Stage 1: Chunker
+chunk = CodeChunk(
+    node_id=node.id,
+    text=node.text,
+    attrs={"node_kind": "Function", "node_name": "verify_token"}
+)
+
+# Stage 2: ChunkTagger
+chunk.attrs.update({
+    "is_function_definition": True,
+    "has_docstring": False,
+    "is_async": False,
+})
+
+# Stage 3: SearchTextBuilder
+chunk.attrs["search_text"] = """
+[META] File: auth/jwt_handler.py
+[META] Symbol: Function verify_token
+[META] Contains: authentication
+
+def verify_token(token: str):
+    return jwt.decode(token)
+"""
+
+# Stage 4: ChunkStore → PostgreSQL
+# chunks 테이블에 INSERT
+
+# 최종: 검색 인덱스
+# Meilisearch: search_text 인덱싱
+# Qdrant: embedding(search_text) 저장
 ```
 
 ## Stage 1: Chunker (Node → Chunk)
@@ -263,16 +441,16 @@ metadata = {
     "is_class_definition": True/False,
     "is_function_definition": True/False,
     "has_docstring": True/False,
-    
+
     # 특수 태그
     "is_api_endpoint_chunk": True/False,
     "is_test_case": True/False,
     "is_schema_definition": True/False,
-    
+
     # API 정보 (endpoint인 경우)
     "http_method": "POST",
     "http_path": "/api/search",
-    
+
     # 비동기
     "has_async": True/False,
 }
@@ -430,11 +608,11 @@ CREATE TABLE code_chunks (
 
 ```sql
 -- 1. 위치 기반 조회 (Zoekt 매핑에 필수)
-CREATE INDEX idx_chunks_location 
+CREATE INDEX idx_chunks_location
 ON code_chunks(repo_id, file_path, span_start_line, span_end_line);
 
 -- 2. Node 기반 조회
-CREATE INDEX idx_chunks_node 
+CREATE INDEX idx_chunks_node
 ON code_chunks(repo_id, node_id);
 ```
 
@@ -458,10 +636,10 @@ def save_chunks(chunks: list[CodeChunk]):
         execute_batch(
             cur,
             """
-            INSERT INTO code_chunks 
+            INSERT INTO code_chunks
             (repo_id, chunk_id, node_id, ..., text)
             VALUES (%s, %s, %s, ..., %s)
-            ON CONFLICT (repo_id, chunk_id) 
+            ON CONFLICT (repo_id, chunk_id)
             DO UPDATE SET text = EXCLUDED.text
             """,
             [(chunk.repo_id, chunk.id, ...) for chunk in chunks]
@@ -617,4 +795,3 @@ def large_function():
 ### 문서
 - ADR: `docs/adr/013-file-summary-chunks.md`
 - RAPTOR Chunking: `docs/adr/adr_0007_raptor-chunking.md`
-
