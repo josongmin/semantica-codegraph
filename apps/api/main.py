@@ -33,6 +33,30 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# OpenTelemetry FastAPI 계측
+if bootstrap.config.otel_enabled:
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        FastAPIInstrumentor.instrument_app(app)
+        logger.info("FastAPI instrumentation enabled")
+    except ImportError:
+        logger.warning("opentelemetry-instrumentation-fastapi not installed")
+
+# OpenLIT 초기화 (LLM 호출 추적)
+if bootstrap.config.otel_enabled:
+    try:
+        import openlit
+
+        openlit.init(
+            otlp_endpoint=bootstrap.config.otel_endpoint,
+            application_name=bootstrap.config.otel_service_name,
+            environment=bootstrap.config.environment,
+        )
+        logger.info(f"OpenLIT initialized: endpoint={bootstrap.config.otel_endpoint}")
+    except ImportError:
+        logger.warning("openlit not installed - LLM tracing unavailable")
+
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     """API 요청/응답 로깅 미들웨어"""

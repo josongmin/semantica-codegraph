@@ -176,7 +176,7 @@ class Chunker:
         # Symbol 노드만 병렬 처리
         symbol_nodes = [n for n in nodes if n.kind != "File"]
         split_count = 0
-        
+
         with ThreadPoolExecutor(max_workers=4) as executor:
             results = executor.map(process_node, symbol_nodes)
             for node_chunks in results:

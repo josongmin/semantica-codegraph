@@ -49,6 +49,16 @@ llm = [
     "litellm>=1.0.0",  # 통합 LLM 인터페이스 (OpenAI, Anthropic, Ollama 등)
 ]
 
+otel = [
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-instrumentation-fastapi>=0.41b0",
+    "opentelemetry-instrumentation-httpx>=0.41b0",
+    "opentelemetry-instrumentation-psycopg2>=0.41b0",
+    "opentelemetry-exporter-otlp>=1.20.0",
+    "openlit>=1.0.0",  # LLM 호출 추적
+]
+
 [tool.setuptools.packages.find]
 where = ["src", "."]
 

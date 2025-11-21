@@ -10,6 +10,7 @@ from ..search.adapters.lexical.zoekt_adapter import ZoektAdapter
 from ..search.ports.lexical_search_port import LexicalSearchPort
 from .config import Config
 from .enums import LexicalSearchBackend
+from .telemetry import init_telemetry, setup_auto_instrumentation
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,11 @@ class Bootstrap:
     def __init__(self, config: Config):
         self.config = config
         self._connection_string = self._build_connection_string()
+
+        # OpenTelemetry 초기화
+        self.telemetry = init_telemetry(config.otel_service_name, config)
+        if config.otel_enabled:
+            setup_auto_instrumentation()
 
         # 인스턴스 캐시 (lazy loading)
         self._repo_store: Any = None

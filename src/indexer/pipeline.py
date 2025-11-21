@@ -817,10 +817,17 @@ class IndexingPipeline:
                     # File 노드의 text는 파일 전체 내용
                     source_files[node.file_path] = node.text
 
-            chunks = self.chunker.chunk(all_nodes, source_files)
+            chunks, chunk_metrics = self.chunker.chunk(all_nodes, source_files)
             logger.info(
-                f"[Step 6/11] Chunking: {len(chunks)} chunks ({time.time() - step_start:.2f}s)"
+                f"[Step 6/11] Chunking: {len(chunks)} chunks ({time.time() - step_start:.2f}s) "
+                f"(Symbol:{chunk_metrics.get('symbol_chunks', 0)}, "
+                f"FileSummary:{chunk_metrics.get('file_summary_chunks', 0)})"
             )
+
+            # 프로파일러에 청킹 메트릭 추가
+            if hasattr(self, "profiler") and self.profiler:
+                for key, value in chunk_metrics.items():
+                    self.profiler.add_counter(f"chunk_{key}", value)
 
             # 8. 청크 저장
             step_start = time.time()
@@ -1458,12 +1465,16 @@ async def _index_route_semantics(
     if not routes:
         return 0
 
+    import time as time_module
+
     from ..core.enums import EmbeddingModel
 
     logger.info("[Semantic] Generating route summaries...")
 
+    filter_start = time_module.time()
     semantic_nodes = []
     embeddings_to_generate = []
+    summary_lengths = []
 
     for route in routes:
         # 템플릿 summary
@@ -1471,6 +1482,7 @@ async def _index_route_semantics(
             f"{route.http_method} {route.http_path}: {route.handler_name} in {route.file_path}"
         )
         embeddings_to_generate.append(summary)
+        summary_lengths.append(len(summary))
 
         semantic_nodes.append(
             {
@@ -1493,13 +1505,20 @@ async def _index_route_semantics(
         )
 
     # 배치 임베딩 생성
+    import statistics
     import time as time_module
 
     logger.info(f"[Semantic] Generating {len(embeddings_to_generate)} route embeddings...")
-    
+
+    # Summary 생성 시간
+    summary_time_ms = int((time_module.time() - filter_start) * 1000)
+
     embed_start = time_module.time()
     embeddings = self.embedding_service_small.embed_texts(embeddings_to_generate)
     embed_time_ms = int((time_module.time() - embed_start) * 1000)
+
+    # 임베딩 실패 카운트
+    embedding_failures = sum(1 for e in embeddings if e is None)
 
     # 임베딩 채우기
     for node, embedding in zip(semantic_nodes, embeddings, strict=False):
@@ -1507,25 +1526,53 @@ async def _index_route_semantics(
 
     # 배치 저장
     save_start = time_module.time()
+    batch_size = 1000
     saved = self.semantic_node_store.save_batch(
-        semantic_nodes, batch_size=1000, on_conflict="replace"
+        semantic_nodes, batch_size=batch_size, on_conflict="replace"
     )
     save_time_ms = int((time_module.time() - save_start) * 1000)
 
-    # 비용 로깅
+    # 비용 및 통계 계산
     total_tokens = sum(len(s.split()) * 1.3 for s in embeddings_to_generate)
+    estimated_cost = total_tokens / 1_000_000 * 0.02
+
+    # Summary 길이 통계
+    if summary_lengths:
+        summary_stats = {
+            "min": min(summary_lengths),
+            "max": max(summary_lengths),
+            "avg": int(statistics.mean(summary_lengths)),
+            "median": int(statistics.median(summary_lengths)),
+        }
+    else:
+        summary_stats = {}
+
+    # 배치 통계
+    num_batches = (len(semantic_nodes) + batch_size - 1) // batch_size
+
     logger.info(
         f"[Semantic] Routes: {saved} saved, ~{int(total_tokens)} tokens, "
-        f"~${total_tokens / 1_000_000 * 0.02:.4f} cost (3-small), "
-        f"embed:{embed_time_ms}ms, save:{save_time_ms}ms"
+        f"~${estimated_cost:.4f} cost (3-small), "
+        f"summary:{summary_time_ms}ms, embed:{embed_time_ms}ms, save:{save_time_ms}ms, "
+        f"failures:{embedding_failures}, batches:{num_batches}"
     )
 
     # 프로파일러에 상세 메트릭 추가
     if hasattr(self, "profiler") and self.profiler:
         self.profiler.add_counter("route_semantic_count", int(saved))
+        self.profiler.add_counter("route_summary_time_ms", summary_time_ms)
         self.profiler.add_counter("route_embed_time_ms", embed_time_ms)
         self.profiler.add_counter("route_save_time_ms", save_time_ms)
         self.profiler.add_counter("route_tokens", int(total_tokens))
+        self.profiler.add_counter("route_estimated_cost", round(estimated_cost, 6))
+        self.profiler.add_counter("route_batches", num_batches)
+        self.profiler.add_counter(
+            "route_avg_batch_size", len(semantic_nodes) // num_batches if num_batches > 0 else 0
+        )
+        self.profiler.add_counter("route_api_calls", 1)
+        self.profiler.add_counter("route_embedding_failures", embedding_failures)
+        if summary_stats:
+            self.profiler.add_counter("route_summary_lengths", summary_stats)
 
     return int(saved)
 
@@ -1589,7 +1636,7 @@ async def _index_symbol_semantics(
             continue
 
         indexable.append(node)
-    
+
     filter_stats["indexable"] = len(indexable)
     filter_stats["filtered_out"] = (
         filter_stats["file_nodes"]
@@ -1597,7 +1644,7 @@ async def _index_symbol_semantics(
         + filter_stats["test_files"]
         + filter_stats["migrations"]
     )
-    
+
     logger.info(
         f"[Semantic] Symbol filtering: {len(indexable)} indexable from {len(nodes)} nodes "
         f"(filtered: File:{filter_stats['file_nodes']}, Private:{filter_stats['private']}, "
@@ -1630,14 +1677,30 @@ async def _index_symbol_semantics(
             symbols_by_file[node.file_path] = 0
         symbols_by_file[node.file_path] += 1
 
+    # Summary 생성
+    import statistics
+    import time as time_module
+    from collections import defaultdict
+
+    summary_start = time_module.time()
+    summary_lengths = []
+    importance_scores = []
+    node_by_kind: dict = defaultdict(lambda: {"count": 0, "tokens": 0})
+
     for node in indexable:
         # Importance 계산
         file_profile = file_profile_map.get(node.file_path)
         importance = calculate_importance(node, file_profile)
+        importance_scores.append(importance)
 
         # 템플릿 summary
         summary = builder.build(node)
         embeddings_to_generate.append(summary)
+        summary_lengths.append(len(summary))
+
+        # 노드 타입별 통계
+        node_by_kind[node.kind]["count"] += 1
+        node_by_kind[node.kind]["tokens"] += len(summary.split()) * 1.3
 
         semantic_nodes.append(
             {
@@ -1661,9 +1724,9 @@ async def _index_symbol_semantics(
             }
         )
 
-    # 배치 임베딩 생성
-    import time as time_module
+    summary_time_ms = int((time_module.time() - summary_start) * 1000)
 
+    # 배치 임베딩 생성
     logger.info(f"[Semantic] Generating {len(embeddings_to_generate)} symbol embeddings...")
 
     # 프로파일링: 파일별 심볼 수 기록
@@ -1675,33 +1738,95 @@ async def _index_symbol_semantics(
     embeddings = self.embedding_service_small.embed_texts(embeddings_to_generate)
     embed_time_ms = int((time_module.time() - embed_start) * 1000)
 
+    # 임베딩 실패 카운트
+    embedding_failures = sum(1 for e in embeddings if e is None)
+
     # 임베딩 채우기
     for node, embedding in zip(semantic_nodes, embeddings, strict=False):
         node["embedding"] = embedding
 
     # 배치 저장 (1000개씩)
     save_start = time_module.time()
+    batch_size = 1000
     saved = self.semantic_node_store.save_batch(
-        semantic_nodes, batch_size=1000, on_conflict="replace"
+        semantic_nodes, batch_size=batch_size, on_conflict="replace"
     )
     save_time_ms = int((time_module.time() - save_start) * 1000)
 
-    # 비용 로깅
+    # 비용 및 통계 계산
     total_tokens = sum(len(s.split()) * 1.3 for s in embeddings_to_generate)
+    estimated_cost = total_tokens / 1_000_000 * 0.02
+    num_batches = (len(semantic_nodes) + batch_size - 1) // batch_size
+
+    # Summary 길이 통계
+    summary_stats = {}
+    if summary_lengths:
+        summary_stats = {
+            "min": min(summary_lengths),
+            "max": max(summary_lengths),
+            "avg": int(statistics.mean(summary_lengths)),
+            "median": int(statistics.median(summary_lengths)),
+        }
+
+    # 중요도 분포
+    importance_distribution = {
+        "0.0-0.2": sum(1 for i in importance_scores if 0.0 <= i < 0.2),
+        "0.2-0.4": sum(1 for i in importance_scores if 0.2 <= i < 0.4),
+        "0.4-0.6": sum(1 for i in importance_scores if 0.4 <= i < 0.6),
+        "0.6-0.8": sum(1 for i in importance_scores if 0.6 <= i < 0.8),
+        "0.8-1.0": sum(1 for i in importance_scores if 0.8 <= i <= 1.0),
+    }
+    avg_importance = statistics.mean(importance_scores) if importance_scores else 0
+    high_importance = sum(1 for i in importance_scores if i >= 0.8)
+
+    # 파일별 semantic node 수
+    files_with_nodes = len(symbols_by_file)
+    files_without_nodes = len([p for p in file_profiles if p.file_path not in symbols_by_file])
+
     logger.info(
         f"[Semantic] Symbols: {saved} saved, ~{int(total_tokens)} tokens, "
-        f"~${total_tokens / 1_000_000 * 0.02:.4f} cost (3-small), "
-        f"embed:{embed_time_ms}ms, save:{save_time_ms}ms"
+        f"~${estimated_cost:.4f} cost (3-small), "
+        f"summary:{summary_time_ms}ms, embed:{embed_time_ms}ms, save:{save_time_ms}ms, "
+        f"failures:{embedding_failures}, batches:{num_batches}"
     )
 
     # 프로파일러에 상세 메트릭 추가
     if hasattr(self, "profiler") and self.profiler:
+        # 기존 메트릭
         for key, value in filter_stats.items():
             self.profiler.add_counter(f"symbol_filter_{key}", value)
         self.profiler.add_counter("symbol_semantic_count", int(saved))
+        self.profiler.add_counter("symbol_summary_time_ms", summary_time_ms)
         self.profiler.add_counter("symbol_embed_time_ms", embed_time_ms)
         self.profiler.add_counter("symbol_save_time_ms", save_time_ms)
         self.profiler.add_counter("symbol_tokens", int(total_tokens))
+        self.profiler.add_counter("symbol_estimated_cost", round(estimated_cost, 6))
+
+        # 배치 처리 통계
+        self.profiler.add_counter("symbol_batches", num_batches)
+        self.profiler.add_counter(
+            "symbol_avg_batch_size", len(semantic_nodes) // num_batches if num_batches > 0 else 0
+        )
+
+        # API 호출 통계
+        self.profiler.add_counter("symbol_api_calls", 1)
+        self.profiler.add_counter("symbol_embedding_failures", embedding_failures)
+
+        # Summary 길이 통계
+        if summary_stats:
+            self.profiler.add_counter("symbol_summary_lengths", summary_stats)
+
+        # 중요도 분포
+        self.profiler.add_counter("symbol_importance_distribution", importance_distribution)
+        self.profiler.add_counter("symbol_avg_importance", round(avg_importance, 3))
+        self.profiler.add_counter("symbol_high_importance_count", high_importance)
+
+        # 노드 타입별 통계
+        self.profiler.add_counter("symbol_by_kind", dict(node_by_kind))
+
+        # 파일별 통계
+        self.profiler.add_counter("files_with_semantic_nodes", files_with_nodes)
+        self.profiler.add_counter("files_without_semantic_nodes", files_without_nodes)
 
     return int(saved)
 

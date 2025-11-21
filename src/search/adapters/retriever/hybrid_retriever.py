@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from src.core.config import Config
 from src.core.models import Candidate, ChunkResult, LocationContext, RepoId
 from src.core.ports import ChunkStorePort
+from src.core.telemetry import get_tracer
 from src.search.adapters.fusion import FusionStrategy, WeightedFusion
 from src.search.ports.fuzzy_search_port import FuzzySearchPort
 from src.search.ports.graph_search_port import GraphSearchPort
@@ -14,6 +15,7 @@ from src.search.ports.lexical_search_port import LexicalSearchPort
 from src.search.ports.semantic_search_port import SemanticSearchPort
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer(__name__)
 
 
 class HybridRetriever:

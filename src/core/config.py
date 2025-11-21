@@ -123,6 +123,13 @@ class Config:
     morph_model: str = "morph-rerank-v3"  # Morph 모델명
     morph_top_k: int = 10  # 재순위화 후 반환할 최대 결과 수
 
+    # OpenTelemetry 설정
+    otel_enabled: bool = False  # OpenTelemetry 활성화
+    otel_endpoint: str = "http://localhost:4317"  # OTLP gRPC endpoint
+    otel_sample_rate: float = 1.0  # 샘플링 비율 (0.0~1.0, 프로덕션은 0.1 권장)
+    otel_service_name: str = "semantica-codegraph"  # 서비스 이름
+    environment: str = "development"  # 환경 (development, staging, production)
+
     def __post_init__(self):
         """기본값 초기화"""
         # Edge 타입별 기본 가중치 (중요도 순)
@@ -263,4 +270,9 @@ class Config:
             morph_api_base=os.getenv("MORPH_API_BASE", "https://api-v2.morphstudio.com/v1"),
             morph_model=os.getenv("MORPH_MODEL", "morph-rerank-v3"),
             morph_top_k=int(os.getenv("MORPH_TOP_K", "10")),
+            otel_enabled=os.getenv("OTEL_ENABLED", "false").lower() == "true",
+            otel_endpoint=os.getenv("OTEL_ENDPOINT", "http://localhost:4317"),
+            otel_sample_rate=float(os.getenv("OTEL_SAMPLE_RATE", "1.0")),
+            otel_service_name=os.getenv("OTEL_SERVICE_NAME", "semantica-codegraph"),
+            environment=os.getenv("ENVIRONMENT", "development"),
         )
