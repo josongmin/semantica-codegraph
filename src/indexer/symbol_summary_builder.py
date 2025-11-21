@@ -11,39 +11,39 @@ logger = logging.getLogger(__name__)
 class SymbolSummaryBuilder:
     """
     Symbol 노드 요약 생성 (템플릿 기반)
-    
+
     Phase 1: 템플릿 기반 메타텍스트
     Phase 2: LLM 기반 요약 (중요 심볼만)
     """
-    
+
     def __init__(self, graph_store: GraphStorePort | None = None):
         """
         Args:
             graph_store: 그래프 스토어 (호출 관계 조회용, optional)
         """
         self.graph_store = graph_store
-    
+
     def build(self, node: CodeNode) -> str:
         """
         Symbol 메타텍스트 생성
-        
+
         Example:
             Function hybrid_search in routes/hybrid.py
             Purpose: Combines semantic and lexical search
             Signature: def hybrid_search(query: str, k: int = 10) -> List[Result]
             Calls: meilisearch.search, pgvector.similarity_search
-        
+
         Args:
             node: CodeNode
-        
+
         Returns:
             요약 텍스트
         """
         parts = []
-        
+
         # 1. 기본 정보
         parts.append(f"{node.kind} {node.name} in {node.file_path}")
-        
+
         # 2. Docstring (있으면)
         docstring = node.attrs.get("docstring")
         if docstring:
@@ -52,12 +52,12 @@ class SymbolSummaryBuilder:
             if len(first_line) > 200:
                 first_line = first_line[:200] + "..."
             parts.append(f"Purpose: {first_line}")
-        
+
         # 3. 시그니처 (있으면)
         signature = node.attrs.get("signature")
         if signature:
             parts.append(f"Signature: {signature}")
-        
+
         # 4. 호출 관계 (graph_store 있을 때만)
         if self.graph_store:
             try:
@@ -67,7 +67,7 @@ class SymbolSummaryBuilder:
                 pass
             except Exception as e:
                 logger.debug(f"Failed to get call graph for {node.id}: {e}")
-        
+
         return "\n".join(parts)
 
 
@@ -77,31 +77,31 @@ def calculate_importance(
 ) -> float:
     """
     Symbol 중요도 계산 (0~1)
-    
+
     Phase 1: 간단한 heuristic
     Phase 2: PageRank + ML
-    
+
     Args:
         node: CodeNode
         file_profile: FileProfile (optional)
-    
+
     Returns:
         중요도 점수 (0~1)
     """
     score = 0.0
-    
+
     # 1. Public (기본 30%)
     if not node.name.startswith("_"):
         score += 0.3
-    
+
     # 2. API 핸들러 (40%)
     if node.attrs.get("is_api_handler"):
         score += 0.4
-    
+
     # 3. Docstring 있음 (10%)
     if node.attrs.get("docstring"):
         score += 0.1
-    
+
     # 4. 호출 관계 (최대 20%)
     # in_degree가 있으면 (나중에 graph ranking에서 계산)
     in_degree = node.attrs.get("in_degree", 0)
@@ -111,7 +111,7 @@ def calculate_importance(
         score += 0.15
     elif in_degree > 2:
         score += 0.1
-    
+
     # 5. 파일 역할 (API/Router 파일) (10%)
     if file_profile:
         if file_profile.is_api_file or file_profile.is_router:
@@ -120,6 +120,5 @@ def calculate_importance(
         # file_profile 없으면 attrs에서 추측
         if node.attrs.get("file_is_api") or node.attrs.get("file_is_router"):
             score += 0.1
-    
-    return min(score, 1.0)
 
+    return min(score, 1.0)

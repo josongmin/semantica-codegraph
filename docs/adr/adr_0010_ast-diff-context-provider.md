@@ -103,5 +103,3 @@ GET /api/repos/{owner}/{repo}/symbols/{symbol_id}/context
 ## Notes
 
 AST 기반 Diff Context Provider는 Codegraph와 Copilot 간의 핵심 인터페이스이다. 이를 통해 Copilot은 구조적으로 올바른 코드 수정을 수행할 수 있다.
-
-

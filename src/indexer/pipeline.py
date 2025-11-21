@@ -453,9 +453,7 @@ class IndexingPipeline:
                     api_chunks = sum(
                         1 for _, _, m in metadata_updates if m.get("is_api_endpoint_chunk")
                     )
-                    logger.info(
-                        f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)"
-                    )
+                    logger.info(f"[Profiling] Chunk: {len(metadata_updates)}개 (API: {api_chunks}개)")
                     logger.info(f"[Profiling] search_text 생성 완료 ({len(chunks)}개 chunk)")
             except Exception as e:
                 logger.warning(f"[Profiling] Chunk tagging/search_text 실패 (계속 진행): {e}")

@@ -3,8 +3,8 @@
 import logging
 from typing import Any
 
-from ...query_classifier import QueryClassifier, QueryType
 from ....core.models import Candidate
+from ...query_classifier import QueryClassifier, QueryType
 
 logger = logging.getLogger(__name__)
 
@@ -57,13 +57,13 @@ QUERY_TYPE_WEIGHTS = {
 class HybridRanker:
     """
     하이브리드 랭커
-    
+
     Phase 1 기능:
     - Query type별 가중치 차별화
     - Importance boost (보수적: 최대 10%)
     - Summary method boost (LLM 요약 3%)
     - Explainability (debug 모드)
-    
+
     Phase 2 기능:
     - Learning to Rank (LightGBM)
     - 쿼리 로그 기반 weight 튜닝
@@ -89,12 +89,12 @@ class HybridRanker:
     ) -> list[Candidate]:
         """
         후보 리스트 랭킹
-        
+
         Args:
             query: 쿼리 문자열
             candidates: Candidate 리스트
             max_items: 반환할 최대 항목 수
-        
+
         Returns:
             랭킹된 Candidate 리스트
         """
@@ -134,13 +134,16 @@ class HybridRanker:
             # 2-6. Explanation (debug 모드)
             if self.debug_mode:
                 candidate.metadata["explanation"] = self._build_explanation(
-                    query_type, weights, candidate, base_score, importance_boost, summary_method_boost
+                    query_type,
+                    weights,
+                    candidate,
+                    base_score,
+                    importance_boost,
+                    summary_method_boost,
                 )
 
         # 3. 정렬
-        ranked = sorted(
-            candidates, key=lambda c: c.features.get("final_score", 0.0), reverse=True
-        )
+        ranked = sorted(candidates, key=lambda c: c.features.get("final_score", 0.0), reverse=True)
 
         # 4. 상위 max_items개 반환
         result = ranked[:max_items]
@@ -206,4 +209,3 @@ class HybridRanker:
         """가중치 업데이트 (A/B 테스트용)"""
         QUERY_TYPE_WEIGHTS[query_type] = new_weights
         logger.info(f"Updated weights for {query_type.value}: {new_weights}")
-

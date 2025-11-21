@@ -216,7 +216,8 @@ class Config:
             chunker_max_tokens=int(os.getenv("CHUNKER_MAX_TOKENS", "7000")),
             chunker_max_lines=int(os.getenv("CHUNKER_MAX_LINES", "100")),
             chunker_overlap_lines=int(os.getenv("CHUNKER_OVERLAP_LINES", "5")),
-            chunker_enable_file_summary=os.getenv("CHUNKER_ENABLE_FILE_SUMMARY", "true").lower() == "true",
+            chunker_enable_file_summary=os.getenv("CHUNKER_ENABLE_FILE_SUMMARY", "true").lower()
+            == "true",
             chunker_min_symbols_for_summary=int(os.getenv("CHUNKER_MIN_SYMBOLS_FOR_SUMMARY", "5")),
             fusion_strategy=os.getenv("FUSION_STRATEGY", "weighted_sum"),
             fusion_rrf_k=int(os.getenv("FUSION_RRF_K", "60")),

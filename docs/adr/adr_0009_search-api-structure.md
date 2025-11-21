@@ -83,5 +83,3 @@ GET /api/repos/myorg/myrepo/hybrid/chunks?query=login&level=symbol
 ## Notes
 
 각 API는 독립적으로 사용 가능하며, Agent Planner는 이들을 조합하여 복잡한 검색 시나리오를 구현할 수 있다.
-
-

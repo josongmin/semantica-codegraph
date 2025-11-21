@@ -39,13 +39,13 @@ Level 3: Leaf-level AST Chunk
 def create_semantic_nodes(symbol: NormalizedSymbol) -> List[SemanticNode]:
     # Level 1: Module-level
     module_node = create_module_summary(symbol.file)
-    
+
     # Level 2: Symbol-level
     symbol_node = create_symbol_summary(symbol)
-    
+
     # Level 3: Implementation-level
     impl_chunks = chunk_implementation(symbol.body)
-    
+
     return [module_node, symbol_node] + impl_chunks
 ```
 
@@ -78,5 +78,3 @@ def create_semantic_nodes(symbol: NormalizedSymbol) -> List[SemanticNode]:
 ## Notes
 
 RAPTOR는 원래 논문 검색을 위해 제안되었으나, 코드의 계층적 구조와 잘 맞아떨어진다. AST 기반 청킹과 결합하면 최적의 코드 retrieval을 제공한다.
-
-

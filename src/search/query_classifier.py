@@ -17,7 +17,7 @@ class QueryType(str, Enum):
 class QueryClassifier:
     """
     룰 기반 쿼리 타입 분류
-    
+
     Phase 1: 간단한 regex 패턴
     Phase 2: 쿼리 로그 기반 튜닝
     Phase 3: ML 분류기 (LR or 작은 LLM)
@@ -26,10 +26,10 @@ class QueryClassifier:
     def classify(self, query: str) -> QueryType:
         """
         쿼리 타입 분류
-        
+
         Args:
             query: 쿼리 문자열
-        
+
         Returns:
             QueryType
         """
@@ -71,13 +71,13 @@ class QueryClassifier:
             "architecture overview",
         ]
         has_structure_bigram = any(bigram in query_lower for bigram in structure_bigrams)
-        
+
         # "how does system/project/architecture" 패턴
         has_how_does = "how does" in query_lower
         has_system_keyword = any(
             kw in query_lower for kw in ["system", "project", "architecture", "시스템", "프로젝트"]
         )
-        
+
         if has_structure_bigram or (has_how_does and has_system_keyword):
             return QueryType.STRUCTURE
 
@@ -85,9 +85,8 @@ class QueryClassifier:
         # "how does X work" (X가 system/project가 아닌 경우)
         impl_keywords = ["구현", "implementation", "어떻게 동작", "how to"]
         has_impl_keyword = any(kw in query_lower for kw in impl_keywords)
-        
+
         if has_impl_keyword or has_how_does:
             return QueryType.FUNCTION_IMPL
 
         return QueryType.GENERAL
-

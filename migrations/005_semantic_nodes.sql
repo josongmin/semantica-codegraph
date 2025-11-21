@@ -13,26 +13,26 @@ CREATE TABLE IF NOT EXISTS semantic_nodes (
     node_id TEXT NOT NULL,
     node_type TEXT NOT NULL,          -- 'symbol' | 'route' | 'doc' | 'issue'
     doc_type TEXT,                     -- node_type='doc'일 때: 'readme' | 'adr' | 'design' | 'api_doc'
-    
+
     -- 요약 텍스트
     summary TEXT NOT NULL,             -- 검색용 텍스트 (템플릿 or LLM 생성)
     summary_method TEXT NOT NULL,     -- 'template' | 'llm'
-    
+
     -- 임베딩
     model TEXT NOT NULL,               -- 'text-embedding-3-small' | 'text-embedding-3-large' (풀 네임)
     embedding vector(1536),            -- pgvector (1536 차원 고정, 3072는 별도 테이블)
-    
+
     -- 원본 참조
     source_table TEXT,                 -- 'code_nodes' | 'route_index' | 'documents'
     source_id TEXT,                    -- 원본 테이블의 PK
-    
+
     -- 메타데이터 (JSONB)
     metadata JSONB DEFAULT '{}',       -- importance_score, is_api_handler, query_count, line_count 등
-    
+
     -- 타임스탬프
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
-    
+
     PRIMARY KEY (repo_id, node_id, node_type, model),
     FOREIGN KEY (repo_id) REFERENCES repo_metadata(repo_id) ON DELETE CASCADE
 );
@@ -42,24 +42,24 @@ CREATE TABLE IF NOT EXISTS semantic_nodes (
 -- ============================================================================
 
 -- 기본 검색 필터
-CREATE INDEX idx_semantic_nodes_type_model 
+CREATE INDEX idx_semantic_nodes_type_model
 ON semantic_nodes(repo_id, node_type, model);
 
 -- 문서 타입 필터
-CREATE INDEX idx_semantic_nodes_doc_type 
-ON semantic_nodes(repo_id, doc_type) 
+CREATE INDEX idx_semantic_nodes_doc_type
+ON semantic_nodes(repo_id, doc_type)
 WHERE doc_type IS NOT NULL;
 
 -- 원본 참조 (디버깅/조인용)
-CREATE INDEX idx_semantic_nodes_source 
+CREATE INDEX idx_semantic_nodes_source
 ON semantic_nodes(repo_id, source_table, source_id);
 
 -- 메타데이터 GIN 인덱스
-CREATE INDEX idx_semantic_nodes_metadata 
+CREATE INDEX idx_semantic_nodes_metadata
 ON semantic_nodes USING GIN (metadata);
 
 -- Importance 정렬
-CREATE INDEX idx_semantic_nodes_importance 
+CREATE INDEX idx_semantic_nodes_importance
 ON semantic_nodes(repo_id, ((metadata->>'importance_score')::float) DESC NULLS LAST);
 
 -- Summary method 필터
@@ -113,4 +113,3 @@ CREATE TRIGGER trigger_semantic_nodes_timestamp
 BEFORE UPDATE ON semantic_nodes
 FOR EACH ROW
 EXECUTE FUNCTION update_semantic_nodes_timestamp();
-

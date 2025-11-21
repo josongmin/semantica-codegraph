@@ -180,7 +180,7 @@ self.graph_store.save_edges(all_edges)
 - code_nodes: repo_id, node_id, kind, name, file_path, span, language, text (원본 코드), attrs
 - code_edges: repo_id, src_id, dst_id, kind, attrs
 
-**주의**: 
+**주의**:
 - all_nodes는 메모리에 계속 유지됨
 - Step 7 청킹 시 메모리의 all_nodes를 바로 사용
 - GraphStore에서 다시 조회하지 않음 (성능 최적화)
@@ -266,7 +266,7 @@ for node in all_nodes:
 for node in symbol_nodes:
     # 토큰 수 체크
     token_count = count_tokens(node.text)  # tiktoken
-    
+
     if token_count > 15000:
         # 분할 (라인 기반 + 5줄 오버랩)
         chunks.extend(split_node_by_tokens(node))
@@ -375,12 +375,12 @@ src/indexer/pipeline.py: 15개 청크 (14 Symbol + 1 File Summary)
 def save_chunks(chunks: list[CodeChunk]):
     # 배치 INSERT
     execute_batch(cur, """
-        INSERT INTO code_chunks 
+        INSERT INTO code_chunks
         (repo_id, chunk_id, node_id, file_path, span_start_line, span_end_line,
          language, text, attrs)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (repo_id, chunk_id) 
-        DO UPDATE SET 
+        ON CONFLICT (repo_id, chunk_id)
+        DO UPDATE SET
             text = EXCLUDED.text,
             attrs = EXCLUDED.attrs
     """, [
@@ -422,7 +422,7 @@ CREATE TABLE code_chunks (
 
 **목적**: 청크에 메타데이터 태깅 및 검색 최적화 텍스트 생성
 
-**입력**: 
+**입력**:
 - CodeChunk 리스트 (DB에 저장된 상태, text = raw_code)
 - FileProfile 리스트 (Step 5에서 생성)
 
@@ -480,15 +480,15 @@ CREATE TABLE code_chunks (
    ```python
    parts = []
    parts.append(f"[META] File: {chunk.file_path}")
-   
+
    # FileProfile.roles 사용 (repo_profiler/file_profiler가 선행 분석)
    if file_profile:
        parts.append(f"[META] Role: {', '.join(file_profile.roles)}")
-   
+
    # API 엔드포인트 정보
    if metadata.get("is_api_endpoint_chunk"):
        parts.append(f"[META] Endpoint: {metadata['http_method']} {metadata['http_path']}")
-   
+
    parts.append(f"[META] Symbol: {chunk.attrs['node_kind']} {chunk.attrs['node_name']}")
    ```
 
@@ -502,7 +502,7 @@ CREATE TABLE code_chunks (
    if 'embedding' in chunk.text or 'vector' in chunk.text:
        features.append('vector operations')
    # ... 12가지 더
-   
+
    parts.append(f"[META] Contains: {', '.join(features[:5])}")  # 최대 5개
    ```
 
@@ -536,7 +536,7 @@ def verify_token(token: str) -> User:
 ```python
 # 배치 UPDATE
 execute_batch(cur, """
-    UPDATE code_chunks 
+    UPDATE code_chunks
     SET attrs = jsonb_set(attrs, '{search_text}', %s::jsonb) ||
                 jsonb_set(attrs, '{metadata}', %s::jsonb)
     WHERE repo_id = %s AND chunk_id = %s
@@ -594,7 +594,7 @@ def get_embedding_input(chunk: CodeChunk) -> str:
     search_text = chunk.attrs.get("search_text")
     if search_text:
         return str(search_text)
-    
+
     # 2. Fallback: raw_code + docstring
     parts = [chunk.text]  # raw_code
     if chunk.attrs.get("docstring"):
@@ -637,7 +637,7 @@ points = []
 for chunk, vector in zip(chunks, vectors):
     if vector is None:
         continue  # 토큰 초과 청크 스킵
-    
+
     point = PointStruct(
         id=f"{chunk.repo_id}:{chunk.id}",
         vector=vector,  # 1536 dim (Codestral)
@@ -665,7 +665,7 @@ client.upsert(collection_name=repo_id, points=points)
 - `meta_plus_snippet`: [META] + 코드 일부
 - `adaptive`: 청크 타입별 다른 전략
 
-**성능**: 
+**성능**:
 - 1000개 청크 약 30초 (Mistral, 병렬)
 - 캐시 히트율에 따라 단축 가능
 

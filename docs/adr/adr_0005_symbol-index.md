@@ -67,5 +67,3 @@ CREATE INDEX idx_symbols_kind ON symbols(kind);
 ## Notes
 
 SymbolIndex는 RouteIndex와 함께 Codegraph의 핵심 인덱스이다. SymbolIndex는 "무엇"을, RouteIndex는 "관계"를 담당한다.
-
-

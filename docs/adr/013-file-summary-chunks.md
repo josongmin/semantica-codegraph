@@ -180,7 +180,7 @@ src/indexer/pipeline.py:
 # 변경 전
 MAX_TOKEN_LIMIT = 7000
 
-# 변경 후  
+# 변경 후
 MAX_TOKEN_LIMIT = 15000  # Codestral Embed 16K 제한 (안전 마진 1K)
 ```
 

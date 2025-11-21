@@ -73,5 +73,3 @@ w_graph = 0.2
 ## Notes
 
 Hybrid retrieval은 현대 코드 검색 엔진의 표준이며, Codegraph의 핵심 경쟁력이다.
-
-

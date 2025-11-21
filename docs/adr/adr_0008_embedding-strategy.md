@@ -31,8 +31,8 @@ CREATE TABLE semantic_nodes (
     chunk_index INTEGER
 );
 
-CREATE INDEX idx_semantic_nodes_embedding 
-ON semantic_nodes 
+CREATE INDEX idx_semantic_nodes_embedding
+ON semantic_nodes
 USING ivfflat (embedding vector_cosine_ops);
 ```
 
@@ -57,7 +57,7 @@ def hybrid_search(query: str, model: str = "1536"):
         results = search_semantic_nodes(query)
     elif model == "3072":
         results = search_semantic_nodes_3072(query)
-    
+
     return merge_and_rank(results)
 ```
 
@@ -89,5 +89,3 @@ def hybrid_search(query: str, model: str = "1536"):
 ## Notes
 
 현재는 text-embedding-3-small (1536) 만 사용하며, 필요 시 확장 가능한 구조로 설계되었다.
-
-

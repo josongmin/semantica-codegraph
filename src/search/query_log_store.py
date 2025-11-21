@@ -3,7 +3,6 @@
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from psycopg2 import pool
 
@@ -15,6 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class QueryLog:
     """쿼리 로그"""
+
     repo_id: RepoId
     query_text: str
     query_type: str | None = None
@@ -34,13 +34,13 @@ class QueryLog:
 class QueryLogStore:
     """
     PostgreSQL query_logs 테이블 관리
-    
+
     역할:
     - 검색 쿼리 로깅
     - 통계 조회 (query_type별, 날짜별)
     - 인기 노드 추출
     """
-    
+
     def __init__(self, connection_string: str, pool_size: int = 2, pool_max: int = 5):
         """
         Args:
@@ -48,18 +48,16 @@ class QueryLogStore:
             pool_size: 커넥션 풀 최소 크기
             pool_max: 커넥션 풀 최대 크기
         """
-        self.conn_pool = pool.SimpleConnectionPool(
-            pool_size, pool_max, connection_string
-        )
+        self.conn_pool = pool.SimpleConnectionPool(pool_size, pool_max, connection_string)
         logger.info(f"QueryLogStore: Created connection pool (min={pool_size}, max={pool_max})")
-    
+
     def log_query(self, query_log: QueryLog) -> int:
         """
         쿼리 로그 저장
-        
+
         Args:
             query_log: QueryLog 객체
-        
+
         Returns:
             생성된 로그 ID
         """
@@ -89,7 +87,9 @@ class QueryLogStore:
                         query_log.clicked_node_ids,
                         query_log.feedback_score,
                         query_log.latency_ms,
-                        json.dumps(query_log.backend_latencies) if query_log.backend_latencies else None,
+                        json.dumps(query_log.backend_latencies)
+                        if query_log.backend_latencies
+                        else None,
                         json.dumps(query_log.client_info) if query_log.client_info else None,
                     ],
                 )
@@ -106,7 +106,7 @@ class QueryLogStore:
             raise
         finally:
             self.conn_pool.putconn(conn)
-    
+
     def get_popular_nodes(
         self,
         repo_id: RepoId,
@@ -117,14 +117,14 @@ class QueryLogStore:
     ) -> list[dict]:
         """
         자주 검색되는 노드 추출
-        
+
         Args:
             repo_id: 저장소 ID
             node_type: 노드 타입 필터
             days: 조회 기간 (일)
             min_query_count: 최소 쿼리 횟수
             k: 반환할 노드 수
-        
+
         Returns:
             [{node_id, node_type, query_count, avg_rank}, ...]
         """
@@ -132,7 +132,7 @@ class QueryLogStore:
         try:
             with conn.cursor() as cur:
                 sql = """
-                    SELECT 
+                    SELECT
                         r->>'node_id' as node_id,
                         r->>'node_type' as node_type,
                         COUNT(*) as query_count,
@@ -143,11 +143,11 @@ class QueryLogStore:
                       AND created_at > NOW() - INTERVAL '%s days'
                 """
                 params = [repo_id, days]
-                
+
                 if node_type:
                     sql += " AND r->>'node_type' = %s"
                     params.append(node_type)
-                
+
                 sql += """
                     GROUP BY r->>'node_id', r->>'node_type'
                     HAVING COUNT(*) >= %s
@@ -155,10 +155,10 @@ class QueryLogStore:
                     LIMIT %s
                 """
                 params.extend([min_query_count, k])
-                
+
                 cur.execute(sql, params)
                 rows = cur.fetchall()
-                
+
                 return [
                     {
                         "node_id": row[0],
@@ -170,7 +170,7 @@ class QueryLogStore:
                 ]
         finally:
             self.conn_pool.putconn(conn)
-    
+
     def get_query_stats(
         self,
         repo_id: RepoId,
@@ -178,11 +178,11 @@ class QueryLogStore:
     ) -> dict:
         """
         쿼리 통계
-        
+
         Args:
             repo_id: 저장소 ID
             days: 조회 기간
-        
+
         Returns:
             {
                 'total_queries': int,
@@ -197,7 +197,7 @@ class QueryLogStore:
                 # 전체 통계
                 cur.execute(
                     """
-                    SELECT 
+                    SELECT
                         COUNT(*) as total,
                         AVG(latency_ms) as avg_latency,
                         AVG(result_count) as avg_results
@@ -205,10 +205,10 @@ class QueryLogStore:
                     WHERE repo_id = %s
                       AND created_at > NOW() - INTERVAL '%s days'
                     """,
-                    [repo_id, days]
+                    [repo_id, days],
                 )
                 total, avg_lat, avg_res = cur.fetchone()
-                
+
                 # 타입별 통계
                 cur.execute(
                     """
@@ -218,10 +218,10 @@ class QueryLogStore:
                       AND created_at > NOW() - INTERVAL '%s days'
                     GROUP BY query_type
                     """,
-                    [repo_id, days]
+                    [repo_id, days],
                 )
                 by_type = dict(cur.fetchall())
-                
+
                 return {
                     "total_queries": int(total) if total else 0,
                     "by_type": by_type,
@@ -230,10 +230,9 @@ class QueryLogStore:
                 }
         finally:
             self.conn_pool.putconn(conn)
-    
+
     def close(self):
         """커넥션 풀 종료"""
         if self.conn_pool:
             self.conn_pool.closeall()
             logger.info("QueryLogStore: Connection pool closed")
-

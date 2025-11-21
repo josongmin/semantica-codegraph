@@ -53,5 +53,3 @@ class NormalizedSymbol:
 ## Notes
 
 NormalizedSymbol은 Codegraph의 핵심 데이터 모델이며, 모든 인덱싱과 검색의 기반이 된다.
-
-

@@ -1,6 +1,5 @@
 """QueryClassifier 테스트"""
 
-import pytest
 
 from src.search.query_classifier import QueryClassifier, QueryType
 
@@ -69,4 +68,3 @@ class TestQueryClassifier:
         for query in queries:
             result = self.classifier.classify(query)
             assert result == QueryType.GENERAL, f"Failed for: {query}"
-

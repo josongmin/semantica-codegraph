@@ -99,7 +99,7 @@ Chunk 2: 줄 95-200 (오버랩 5 + 100)
 def split_node_by_tokens(node):
     chunks = []
     lines = node.text.split('\n')
-    
+
     current_pos = 0
     while current_pos < len(lines):
         # 토큰 제한 내에서 최대한 많은 라인 포함
@@ -109,14 +109,14 @@ def split_node_by_tokens(node):
             if count_tokens(chunk_text) > 15000:
                 break
             end_pos += 1
-        
+
         # 청크 생성
         chunk = create_chunk(lines[current_pos:end_pos])
         chunks.append(chunk)
-        
+
         # 오버랩 적용
         current_pos = end_pos - 5  # 5줄 오버랩
-    
+
     return chunks
 ```
 
@@ -386,7 +386,7 @@ routes/auth.py:
 ### Hybrid 검색
 
 ```
-BM25(search_text) * 0.3 + 
+BM25(search_text) * 0.3 +
 Semantic(embedding) * 0.7
 → 최종 점수
 ```
@@ -471,10 +471,10 @@ class UserService:
     def create_user(): ...
     def delete_user(): ...
 
-→ 현재: 
+→ 현재:
   - Class 청크 1개 (전체)
   - Method 청크 2개 (각각)
-  
+
 → 미래 옵션:
   - Class 청크 1개 (개요용)
   - Method 청크 2개 (상세용)
@@ -543,4 +543,3 @@ chunker = Chunker(
 - 파일 요약: `src/chunking/file_summary_builder.py`
 - 파이프라인: `docs/chunking-pipeline.md`
 - ADR: `docs/adr/013-file-summary-chunks.md`
-

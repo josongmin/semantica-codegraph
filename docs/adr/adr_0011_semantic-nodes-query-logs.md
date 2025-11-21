@@ -34,16 +34,16 @@ CREATE TABLE semantic_nodes (
     node_id TEXT NOT NULL,              -- 원본 테이블 PK (prefix 없이)
     node_type TEXT NOT NULL,            -- 'symbol' | 'route' | 'doc' | 'issue'
     doc_type TEXT,                      -- 'readme' | 'adr' | 'design'
-    
+
     summary TEXT NOT NULL,              -- 검색용 텍스트
     summary_method TEXT NOT NULL,       -- 'template' | 'llm'
     model TEXT NOT NULL,                -- 'text-embedding-3-small' (풀 네임)
     embedding vector(1536),
-    
+
     source_table TEXT,
     source_id TEXT,
     metadata JSONB DEFAULT '{}',        -- importance_score, query_count 등
-    
+
     PRIMARY KEY (repo_id, node_id, node_type, model)
 );
 ```
@@ -267,4 +267,3 @@ Query logging: +50-100ms 오버헤드
 - 1-2주 실사용 후 query_logs 분석
 - 인기 노드 LLM 업그레이드
 - Weight 튜닝
-

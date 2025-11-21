@@ -1,10 +1,8 @@
 """HybridRanker 테스트"""
 
-import pytest
 
 from src.core.models import Candidate
 from src.search.adapters.ranking.hybrid_ranker import HybridRanker
-from src.search.query_classifier import QueryType
 
 
 class TestHybridRanker:
@@ -172,4 +170,3 @@ class TestHybridRanker:
         assert "final_score" in explanation
         assert "top_signals" in explanation
         assert len(explanation["top_signals"]) <= 3
-

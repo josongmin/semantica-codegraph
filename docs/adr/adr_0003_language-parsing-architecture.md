@@ -61,5 +61,3 @@ LanguageParser (Abstract)
 ## Notes
 
 tree-sitter는 GitHub, Atom, Neovim 등에서 사용되는 검증된 파서 생성기이다.
-
-

@@ -9,35 +9,35 @@
 
 CREATE TABLE IF NOT EXISTS query_logs (
     id BIGSERIAL PRIMARY KEY,
-    
+
     -- 쿼리 정보
     repo_id TEXT NOT NULL,
     query_text TEXT NOT NULL,
     query_type TEXT,                    -- 'api_location' | 'log_location' | 'structure' | 'function_impl' | 'general'
     query_embedding vector(1536),       -- 쿼리 임베딩 (유사 쿼리 분석용)
-    
+
     -- 검색 설정
     weights JSONB,                      -- 사용한 weight 설정
     filters JSONB,                      -- 적용한 필터 (node_type, language 등)
     k INTEGER,                          -- 요청한 결과 수
-    
+
     -- 검색 결과
     result_count INTEGER,               -- 반환된 결과 수
     top_results JSONB,                  -- 상위 결과 [{node_id, score, rank, signals}, ...]
-    
+
     -- 사용자 피드백 (optional)
     clicked_node_ids TEXT[],            -- 클릭한 노드 ID 리스트
     feedback_score FLOAT,               -- 0-1 (사용자 만족도)
-    
+
     -- 성능
     latency_ms INTEGER,                 -- 응답 시간 (밀리초)
     backend_latencies JSONB,            -- 백엔드별 레이턴시 {lexical: 10ms, semantic: 50ms}
-    
+
     -- 메타데이터
     client_info JSONB,                  -- 클라이언트 정보 (CLI, API, MCP 등)
-    
+
     created_at TIMESTAMP DEFAULT NOW(),
-    
+
     FOREIGN KEY (repo_id) REFERENCES repo_metadata(repo_id) ON DELETE CASCADE
 );
 
@@ -70,24 +70,24 @@ CREATE TABLE IF NOT EXISTS node_popularity (
     repo_id TEXT NOT NULL,
     node_id TEXT NOT NULL,
     node_type TEXT NOT NULL,            -- 'symbol' | 'route' | 'doc'
-    
+
     -- 쿼리 빈도
     query_count_7d INTEGER DEFAULT 0,   -- 7일간 쿼리 결과에 포함된 횟수
     query_count_30d INTEGER DEFAULT 0,  -- 30일간
-    
+
     -- 클릭 빈도
     click_count_7d INTEGER DEFAULT 0,   -- 7일간 클릭 횟수
     click_count_30d INTEGER DEFAULT 0,  -- 30일간
-    
+
     -- 평균 순위
     avg_rank FLOAT,                     -- 평균 검색 순위 (낮을수록 좋음)
-    
+
     -- 마지막 접근
     last_queried_at TIMESTAMP,
     last_clicked_at TIMESTAMP,
-    
+
     updated_at TIMESTAMP DEFAULT NOW(),
-    
+
     PRIMARY KEY (repo_id, node_id),
     FOREIGN KEY (repo_id) REFERENCES repo_metadata(repo_id) ON DELETE CASCADE
 );
@@ -112,4 +112,3 @@ COMMENT ON COLUMN query_logs.backend_latencies IS '백엔드별 레이턴시 {le
 COMMENT ON TABLE node_popularity IS '노드 인기도 집계 (중요 노드 선정용)';
 COMMENT ON COLUMN node_popularity.query_count_7d IS '7일간 검색 결과에 포함된 횟수';
 COMMENT ON COLUMN node_popularity.avg_rank IS '평균 검색 순위 (1-based, 낮을수록 좋음)';
-
