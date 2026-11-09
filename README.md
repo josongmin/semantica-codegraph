@@ -1,6 +1,18 @@
+<p align="center"><img src="readme-banner.svg" alt="Semantica Codegraph — Parse source, build a code graph, and retrieve structured context." width="100%"></p>
+
 # Semantica Codegraph
 
 A Python code graph and hybrid retrieval system for code-understanding tools. It connects parsing, chunks, code relationships, and embeddings behind CLI, HTTP, and MCP interfaces.
+
+
+## Engineering highlights
+
+| Mechanism | Engineering purpose |
+| :--- | :--- |
+| **Multiple parsing inputs** | Tree-sitter parsing, SCIP integration, and text fallback feed the indexing path. |
+| **Graph and semantic context** | Code chunks, graph relationships, and vector embeddings provide different retrieval signals. |
+| **Hybrid retrieval assembly** | Lexical, semantic, graph, and fuzzy adapters feed ranking and context packing. |
+| **Shared composition** | CLI, FastAPI, and MCP interfaces use dependencies assembled by the core bootstrap rather than separate indexing implementations. |
 
 ## Retrieval pipeline
 
