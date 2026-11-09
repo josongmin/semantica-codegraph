@@ -2,17 +2,18 @@
 
 # Semantica Codegraph
 
-A Python code graph and hybrid retrieval system for code-understanding tools. It connects parsing, chunks, code relationships, and embeddings behind CLI, HTTP, and MCP interfaces.
+<p align="center"><a href="#engineering-highlights">Engineering</a> · <a href="#retrieval-pipeline">Architecture</a> · <a href="#local-development">Get started</a> · <a href="#documentation">Reference</a></p>
 
+A Python code graph and hybrid retrieval system for code-understanding tools. It connects parsing, chunks, code relationships, and embeddings behind CLI, HTTP, and MCP interfaces.
 
 ## Engineering highlights
 
-| Mechanism | Engineering purpose |
-| :--- | :--- |
-| **Multiple parsing inputs** | Tree-sitter parsing, SCIP integration, and text fallback feed the indexing path. |
-| **Graph and semantic context** | Code chunks, graph relationships, and vector embeddings provide different retrieval signals. |
-| **Hybrid retrieval assembly** | Lexical, semantic, graph, and fuzzy adapters feed ranking and context packing. |
-| **Shared composition** | CLI, FastAPI, and MCP interfaces use dependencies assembled by the core bootstrap rather than separate indexing implementations. |
+| Mechanism | Engineering purpose | Source |
+| :--- | :--- | :--- |
+| **Multiple parsing inputs** | Tree-sitter parsing, SCIP integration, and text fallback feed the indexing path. | [Parsers](src/parser/) |
+| **Graph and semantic context** | Code chunks, graph relationships, and vector embeddings provide different retrieval signals. | [Graph storage](src/graph/) |
+| **Hybrid retrieval assembly** | Lexical, semantic, graph, and fuzzy adapters feed ranking and context packing. | [Retrieval](src/search/) |
+| **Shared composition** | CLI, FastAPI, and MCP interfaces use dependencies assembled by the core bootstrap rather than separate indexing implementations. | [Bootstrap](src/core/bootstrap.py) |
 
 ## Retrieval pipeline
 
@@ -73,3 +74,5 @@ This is the earlier Python implementation. It retains parser, indexing, storage,
 - [CLI development](docs/cli-development-guide.md)
 - [Database migrations](.doc/migrations-guide.md)
 - [Benchmark workflow](.doc/benchmarks-guide.md)
+
+<p align="center"><sub><a href="https://github.com/josongmin">Project map</a> · <a href="#engineering-highlights">Back to overview</a></sub></p>
